@@ -19,21 +19,17 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ): void => {
-  console.error('Error:', {
+  const statusCode = (err as AppError).statusCode || 500;
+  const isOperational = (err as AppError).isOperational || statusCode < 500 || err instanceof AppError || err.name === 'AppError';
+
+  console.error('Error Handler:', {
     name: err.name,
     message: err.message,
+    statusCode,
+    isOperational,
     stack: env.NODE_ENV === 'development' ? err.stack : undefined,
   });
 
-  if (err instanceof AppError) {
-    res.status(err.statusCode).json({
-      success: false,
-      error: err.message,
-    });
-    return;
-  }
-
-  // Handle specific error types
   if (err.name === 'JsonWebTokenError') {
     res.status(401).json({
       success: false,
@@ -58,12 +54,10 @@ export const errorHandler = (
     return;
   }
 
-  // Generic server error
-  const statusCode = 500;
-  const message =
-    env.NODE_ENV === 'production'
-      ? 'An unexpected error occurred. Please try again later.'
-      : err.message;
+  // Expose operational error messages (e.g. 401 Invalid Credentials, 403 Deactivated) directly
+  const message = isOperational || env.NODE_ENV !== 'production'
+    ? (err.message || 'An error occurred.')
+    : 'An unexpected error occurred. Please try again later.';
 
   res.status(statusCode).json({
     success: false,

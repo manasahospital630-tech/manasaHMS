@@ -12,19 +12,15 @@ class AppError extends Error {
 }
 exports.AppError = AppError;
 const errorHandler = (err, _req, res, _next) => {
-    console.error('Error:', {
+    const statusCode = err.statusCode || 500;
+    const isOperational = err.isOperational || statusCode < 500 || err instanceof AppError || err.name === 'AppError';
+    console.error('Error Handler:', {
         name: err.name,
         message: err.message,
+        statusCode,
+        isOperational,
         stack: environment_1.env.NODE_ENV === 'development' ? err.stack : undefined,
     });
-    if (err instanceof AppError) {
-        res.status(err.statusCode).json({
-            success: false,
-            error: err.message,
-        });
-        return;
-    }
-    // Handle specific error types
     if (err.name === 'JsonWebTokenError') {
         res.status(401).json({
             success: false,
@@ -46,11 +42,10 @@ const errorHandler = (err, _req, res, _next) => {
         });
         return;
     }
-    // Generic server error
-    const statusCode = 500;
-    const message = environment_1.env.NODE_ENV === 'production'
-        ? 'An unexpected error occurred. Please try again later.'
-        : err.message;
+    // Expose operational error messages (e.g. 401 Invalid Credentials, 403 Deactivated) directly
+    const message = isOperational || environment_1.env.NODE_ENV !== 'production'
+        ? (err.message || 'An error occurred.')
+        : 'An unexpected error occurred. Please try again later.';
     res.status(statusCode).json({
         success: false,
         error: message,
