@@ -196,37 +196,42 @@ export const deleteRole = async (roleId: string) => {
 };
 
 export const getUserPermissionMatrix = async (userId: string) => {
-  const res = await query(`
-    SELECT 
-      mm.module_key,
-      bool_or(COALESCE(rp.can_view, false)) as can_view,
-      bool_or(COALESCE(rp.can_create, false)) as can_create,
-      bool_or(COALESCE(rp.can_edit, false)) as can_edit,
-      bool_or(COALESCE(rp.can_delete, false)) as can_delete,
-      bool_or(COALESCE(rp.can_append, false)) as can_append,
-      bool_or(COALESCE(rp.can_append_to, false)) as can_append_to,
-      bool_or(COALESCE(rp.is_hidden, false)) as is_hidden,
-      jsonb_object_agg(COALESCE(rp.module_id::text, 'default'), COALESCE(rp.custom_permissions, '{}'::jsonb)) as custom_permissions
-    FROM user_roles ur
-    JOIN role_permissions rp ON ur.role_id = rp.role_id
-    JOIN modules_master mm ON rp.module_id = mm.module_id
-    WHERE ur.user_id = $1
-    GROUP BY mm.module_key
-  `, [userId]);
+  try {
+    const res = await query(`
+      SELECT 
+        mm.module_key,
+        bool_or(COALESCE(rp.can_view, false)) as can_view,
+        bool_or(COALESCE(rp.can_create, false)) as can_create,
+        bool_or(COALESCE(rp.can_edit, false)) as can_edit,
+        bool_or(COALESCE(rp.can_delete, false)) as can_delete,
+        bool_or(COALESCE(rp.can_append, false)) as can_append,
+        bool_or(COALESCE(rp.can_append_to, false)) as can_append_to,
+        bool_or(COALESCE(rp.is_hidden, false)) as is_hidden,
+        jsonb_object_agg(COALESCE(rp.module_id::text, 'default'), COALESCE(rp.custom_permissions, '{}'::jsonb)) as custom_permissions
+      FROM user_roles ur
+      JOIN role_permissions rp ON ur.role_id = rp.role_id
+      JOIN modules_master mm ON rp.module_id = mm.module_id
+      WHERE ur.user_id = $1
+      GROUP BY mm.module_key
+    `, [userId]);
 
-  const matrix: Record<string, any> = {};
-  res.rows.forEach(r => {
-    matrix[r.module_key] = {
-      can_view: r.is_hidden ? false : r.can_view,
-      can_create: r.is_hidden ? false : r.can_create,
-      can_edit: r.is_hidden ? false : r.can_edit,
-      can_delete: r.is_hidden ? false : r.can_delete,
-      can_append: r.is_hidden ? false : r.can_append,
-      can_append_to: r.is_hidden ? false : r.can_append_to,
-      is_hidden: r.is_hidden,
-      custom_permissions: r.custom_permissions
-    };
-  });
+    const matrix: Record<string, any> = {};
+    res.rows.forEach(r => {
+      matrix[r.module_key] = {
+        can_view: r.is_hidden ? false : r.can_view,
+        can_create: r.is_hidden ? false : r.can_create,
+        can_edit: r.is_hidden ? false : r.can_edit,
+        can_delete: r.is_hidden ? false : r.can_delete,
+        can_append: r.is_hidden ? false : r.can_append,
+        can_append_to: r.is_hidden ? false : r.can_append_to,
+        is_hidden: r.is_hidden,
+        custom_permissions: r.custom_permissions
+      };
+    });
 
-  return matrix;
+    return matrix;
+  } catch (err) {
+    console.warn('Warning: getUserPermissionMatrix error (returning default matrix):', err);
+    return {};
+  }
 };

@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.errorHandler = exports.AppError = void 0;
-const environment_1 = require("../config/environment");
 class AppError extends Error {
     constructor(message, statusCode = 500, isOperational = true) {
         super(message);
@@ -13,13 +12,11 @@ class AppError extends Error {
 exports.AppError = AppError;
 const errorHandler = (err, _req, res, _next) => {
     const statusCode = err.statusCode || 500;
-    const isOperational = err.isOperational || statusCode < 500 || err instanceof AppError || err.name === 'AppError';
     console.error('Error Handler:', {
         name: err.name,
         message: err.message,
         statusCode,
-        isOperational,
-        stack: environment_1.env.NODE_ENV === 'development' ? err.stack : undefined,
+        stack: err.stack,
     });
     if (err.name === 'JsonWebTokenError') {
         res.status(401).json({
@@ -42,10 +39,8 @@ const errorHandler = (err, _req, res, _next) => {
         });
         return;
     }
-    // Expose operational error messages (e.g. 401 Invalid Credentials, 403 Deactivated) directly
-    const message = isOperational || environment_1.env.NODE_ENV !== 'production'
-        ? (err.message || 'An error occurred.')
-        : 'An unexpected error occurred. Please try again later.';
+    // Always return human-readable error message to help diagnostic feedback on Hostinger/Cloud hosting
+    const message = err.message || 'An unexpected error occurred. Please try again later.';
     res.status(statusCode).json({
         success: false,
         error: message,

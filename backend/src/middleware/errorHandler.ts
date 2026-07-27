@@ -20,14 +20,12 @@ export const errorHandler = (
   _next: NextFunction
 ): void => {
   const statusCode = (err as AppError).statusCode || 500;
-  const isOperational = (err as AppError).isOperational || statusCode < 500 || err instanceof AppError || err.name === 'AppError';
 
   console.error('Error Handler:', {
     name: err.name,
     message: err.message,
     statusCode,
-    isOperational,
-    stack: env.NODE_ENV === 'development' ? err.stack : undefined,
+    stack: err.stack,
   });
 
   if (err.name === 'JsonWebTokenError') {
@@ -54,10 +52,8 @@ export const errorHandler = (
     return;
   }
 
-  // Expose operational error messages (e.g. 401 Invalid Credentials, 403 Deactivated) directly
-  const message = isOperational || env.NODE_ENV !== 'production'
-    ? (err.message || 'An error occurred.')
-    : 'An unexpected error occurred. Please try again later.';
+  // Always return human-readable error message to help diagnostic feedback on Hostinger/Cloud hosting
+  const message = err.message || 'An unexpected error occurred. Please try again later.';
 
   res.status(statusCode).json({
     success: false,
