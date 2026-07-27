@@ -11,8 +11,8 @@ export declare const createUserSchema: z.ZodObject<{
     licenseNumber: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     consultationFee: z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodString]>>;
 }, "strip", z.ZodTypeAny, {
-    email: string;
     password: string;
+    email: string;
     firstName: string;
     lastName: string;
     role: "Admin" | "Management" | "Doctor" | "Nurse" | "Receptionist" | "Pharmacist" | "Biller" | "Patient" | "Incharge";
@@ -22,8 +22,8 @@ export declare const createUserSchema: z.ZodObject<{
     licenseNumber?: string | undefined;
     consultationFee?: string | number | undefined;
 }, {
-    email: string;
     password: string;
+    email: string;
     firstName: string;
     lastName: string;
     role: "Admin" | "Management" | "Doctor" | "Nurse" | "Receptionist" | "Pharmacist" | "Biller" | "Patient" | "Incharge";
@@ -46,8 +46,8 @@ export declare const updateUserSchema: z.ZodObject<{
     licenseNumber: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     consultationFee: z.ZodOptional<z.ZodUnion<[z.ZodNumber, z.ZodString]>>;
 }, "strip", z.ZodTypeAny, {
-    email?: string | undefined;
     password?: string | undefined;
+    email?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     phone?: string | undefined;
@@ -58,8 +58,8 @@ export declare const updateUserSchema: z.ZodObject<{
     consultationFee?: string | number | undefined;
     isActive?: boolean | undefined;
 }, {
-    email?: string | undefined;
     password?: string | undefined;
+    email?: string | undefined;
     firstName?: string | undefined;
     lastName?: string | undefined;
     phone?: string | undefined;

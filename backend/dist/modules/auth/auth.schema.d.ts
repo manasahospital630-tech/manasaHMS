@@ -7,15 +7,15 @@ export declare const registerSchema: z.ZodObject<{
     phone: z.ZodOptional<z.ZodString>;
     role: z.ZodEnum<["Admin", "Management", "Doctor", "Nurse", "Receptionist", "Pharmacist", "Biller", "Patient", "Incharge"]>;
 }, "strip", z.ZodTypeAny, {
-    email: string;
     password: string;
+    email: string;
     firstName: string;
     lastName: string;
     role: "Admin" | "Management" | "Doctor" | "Nurse" | "Receptionist" | "Pharmacist" | "Biller" | "Patient" | "Incharge";
     phone?: string | undefined;
 }, {
-    email: string;
     password: string;
+    email: string;
     firstName: string;
     lastName: string;
     role: "Admin" | "Management" | "Doctor" | "Nurse" | "Receptionist" | "Pharmacist" | "Biller" | "Patient" | "Incharge";
@@ -25,11 +25,11 @@ export declare const loginSchema: z.ZodObject<{
     email: z.ZodEffects<z.ZodString, string, string>;
     password: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    email: string;
     password: string;
+    email: string;
 }, {
-    email: string;
     password: string;
+    email: string;
 }>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
