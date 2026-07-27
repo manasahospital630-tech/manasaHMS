@@ -10,7 +10,14 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1076.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/morgan": "^1.9.9",
+    "@types/pg": "^8.11.11",
     "@types/qrcode": "^1.5.6",
+    "@types/uuid": "^10.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -20,18 +27,9 @@
     "morgan": "^1.10.0",
     "pg": "^8.13.1",
     "qrcode": "^1.5.4",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.7.3",
     "uuid": "^11.0.5",
     "zod": "^3.24.2"
-  },
-  "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
-    "@types/jsonwebtoken": "^9.0.9",
-    "@types/morgan": "^1.9.9",
-    "@types/pg": "^8.11.11",
-    "@types/uuid": "^10.0.0",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.7.3"
   }
 }
