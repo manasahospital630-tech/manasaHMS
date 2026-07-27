@@ -62,3 +62,16 @@ INSERT IGNORE INTO inventory_items (item_id, item_name, sku, category, manufactu
 -- Seed Hospital Settings
 INSERT IGNORE INTO hospital_settings (id, hospital_name, hospital_address, phone_number, website, email, gstin, license_info) VALUES
 (1, 'Hannah Hospital & Research Center', '12-3-456, Main Road, Hyderabad, Telangana', '+91 98765 43210', 'https://manasahospital.co.in', 'info@manasahospital.co.in', '36AAACH1234F1Z5', 'PR-2026/8508');
+
+-- Seed Hospital Beds (General Ward, Deluxe, ICU, Emergency)
+INSERT IGNORE INTO hospital_beds (bed_id, bed_number, ward_name, ward_type, floor, status, daily_rate) VALUES
+('bed-101', 'B-101', 'General Ward A', 'General', 1, 'Available', 1500.00),
+('bed-102', 'B-102', 'General Ward A', 'General', 1, 'Occupied', 1500.00),
+('bed-103', 'B-103', 'General Ward A', 'General', 1, 'Available', 1500.00),
+('bed-104', 'B-104', 'General Ward B', 'General', 1, 'Occupied', 1500.00),
+('bed-105', 'B-105', 'General Ward B', 'General', 1, 'Available', 1500.00),
+('bed-201', 'B-201', 'ICU Special Care', 'ICU', 2, 'Occupied', 5000.00),
+('bed-202', 'B-202', 'ICU Special Care', 'ICU', 2, 'Available', 5000.00),
+('bed-203', 'B-203', 'ICU Special Care', 'ICU', 2, 'Occupied', 5000.00),
+('bed-301', 'B-301', 'Deluxe Private Suite', 'Deluxe', 3, 'Available', 3500.00),
+('bed-302', 'B-302', 'Deluxe Private Suite', 'Deluxe', 3, 'Available', 3500.00);
