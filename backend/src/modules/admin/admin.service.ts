@@ -33,7 +33,8 @@ export const getAllUsers = async (options: { search?: string; limit?: number; of
 };
 
 export const createUser = async (input: CreateUserInput) => {
-  const existing = await query('SELECT user_id FROM users WHERE email = $1', [input.email]);
+  const cleanEmail = (input.email || '').trim().toLowerCase();
+  const existing = await query('SELECT user_id FROM users WHERE LOWER(email) = $1', [cleanEmail]);
   if (existing.rows.length > 0) throw new AppError('Email already exists.', 409);
 
   const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS);
@@ -41,30 +42,40 @@ export const createUser = async (input: CreateUserInput) => {
   const spec = input.specialization || '';
   const lic = input.licenseNumber || '';
   const fee = input.consultationFee !== undefined && input.consultationFee !== null && input.consultationFee !== '' ? parseFloat(String(input.consultationFee)) : 0;
+  const { v4: uuidv4 } = require('uuid');
+  const userId = uuidv4();
 
-  const result = await query(
-    `INSERT INTO users (email, password_hash, first_name, last_name, phone, role, employee_department, employee_specialization, license_number)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) 
-     RETURNING user_id, email, first_name, last_name, phone, role, is_active, employee_department, employee_specialization, license_number, created_at`,
-    [input.email, passwordHash, input.firstName, input.lastName, input.phone || null, input.role, dept || null, spec || null, lic || null]
+  await query(
+    `INSERT INTO users (user_id, email, password_hash, first_name, last_name, phone, role, is_active, employee_department, employee_specialization, license_number)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9, $10)`,
+    [userId, cleanEmail, passwordHash, input.firstName, input.lastName, input.phone || null, input.role, dept || null, spec || null, lic || null]
   );
 
-  const user = result.rows[0];
-
-  if (user && (user.role === 'Doctor' || dept || fee > 0)) {
+  if (input.role === 'Doctor' || dept || fee > 0) {
     await query(`
-      INSERT INTO doctor_profiles (doctor_id, department, consultation_fee, updated_at)
-      VALUES ($1, $2, $3, NOW())
-      ON CONFLICT (doctor_id) DO UPDATE
-      SET department = EXCLUDED.department,
-          consultation_fee = EXCLUDED.consultation_fee,
-          updated_at = NOW()
-    `, [user.user_id, dept || 'General', fee]);
-    user.department = dept || 'General';
-    user.consultation_fee = fee;
+      INSERT INTO doctor_profiles (doctor_id, department, specialization, license_number, consultation_fee)
+      VALUES ($1, $2, $3, $4, $5)
+      ON DUPLICATE KEY UPDATE
+        department = VALUES(department),
+        specialization = VALUES(specialization),
+        license_number = VALUES(license_number),
+        consultation_fee = VALUES(consultation_fee)
+    `, [userId, dept || 'General', spec || null, lic || null, fee]);
   }
 
-  return user;
+  const result = await query(
+    `SELECT u.user_id, u.email, u.first_name, u.last_name, u.phone, u.role, u.is_active, 
+            u.employee_department, u.employee_specialization, u.license_number,
+            COALESCE(dp.department, u.employee_department, '') as department,
+            COALESCE(dp.consultation_fee, 0.00) as consultation_fee,
+            u.created_at, u.updated_at
+     FROM users u
+     LEFT JOIN doctor_profiles dp ON u.user_id = dp.doctor_id
+     WHERE u.user_id = $1`,
+    [userId]
+  );
+
+  return result.rows[0];
 };
 
 export const updateUser = async (id: string, input: UpdateUserInput) => {
@@ -99,14 +110,10 @@ export const updateUser = async (id: string, input: UpdateUserInput) => {
   }
 
   if (fields.length > 0) {
-    fields.push(`updated_at = NOW()`);
     values.push(id);
-
-    const result = await query(
-      `UPDATE users SET ${fields.join(', ')} WHERE user_id = $${idx}
-       RETURNING user_id, email, first_name, last_name, phone, role, is_active, employee_department, employee_specialization, license_number, updated_at`, values
+    await query(
+      `UPDATE users SET ${fields.join(', ')} WHERE user_id = $${idx}`, values
     );
-    if (result.rows.length === 0) throw new AppError('User not found.', 404);
   }
 
   // Handle doctor profile sync
@@ -123,12 +130,11 @@ export const updateUser = async (id: string, input: UpdateUserInput) => {
     const finalFee = fee !== null ? fee : currentFee;
 
     await query(`
-      INSERT INTO doctor_profiles (doctor_id, department, consultation_fee, updated_at)
-      VALUES ($1, $2, $3, NOW())
-      ON CONFLICT (doctor_id) DO UPDATE
-      SET department = EXCLUDED.department,
-          consultation_fee = EXCLUDED.consultation_fee,
-          updated_at = NOW()
+      INSERT INTO doctor_profiles (doctor_id, department, consultation_fee)
+      VALUES ($1, $2, $3)
+      ON DUPLICATE KEY UPDATE
+        department = VALUES(department),
+        consultation_fee = VALUES(consultation_fee)
     `, [id, dept || 'General', finalFee]);
   }
 

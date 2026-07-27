@@ -9,8 +9,22 @@ CREATE TABLE IF NOT EXISTS users (
     phone VARCHAR(20),
     role VARCHAR(50) NOT NULL DEFAULT 'Patient',
     is_active BOOLEAN DEFAULT TRUE,
+    employee_department VARCHAR(100),
+    employee_specialization VARCHAR(100),
+    license_number VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS doctor_profiles (
+    doctor_id VARCHAR(36) PRIMARY KEY,
+    department VARCHAR(100) DEFAULT 'General',
+    specialization VARCHAR(100),
+    license_number VARCHAR(100),
+    consultation_fee DECIMAL(10,2) DEFAULT 500.00,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (doctor_id) REFERENCES users(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS patients (
