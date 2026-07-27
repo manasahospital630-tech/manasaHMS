@@ -1,17 +1,18 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAndUploadQrCode = exports.uploadBase64Image = void 0;
-const client_s3_1 = require("@aws-sdk/client-s3");
-const s3 = new client_s3_1.S3Client({
-    endpoint: process.env.SUPABASE_S3_ENDPOINT || 'https://ctrlsyhzszlufdnguerz.storage.supabase.co/storage/v1/s3',
-    region: 'ap-northeast-1',
-    credentials: {
-        accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID || 'c429c15eac92ed5649c4cc502219f481',
-        secretAccessKey: process.env.SUPABASE_S3_SECRET_ACCESS_KEY || 'a6630d55c7dbf76585191afc00dcc30408ccef71e982f1d6b19e56aeaa947f9d',
-    },
-    forcePathStyle: true,
-});
-const uploadBase64Image = async (base64String, bucketName = 'logos', customFileName) => {
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
+const uploadsBaseDir = path_1.default.join(process.cwd(), 'uploads');
+const ensureDirectoryExists = (dirPath) => {
+    if (!fs_1.default.existsSync(dirPath)) {
+        fs_1.default.mkdirSync(dirPath, { recursive: true });
+    }
+};
+const uploadBase64Image = async (base64String, folderCategory = 'images', customFileName) => {
     if (!base64String) {
         throw new Error('No base64 string provided');
     }
@@ -26,30 +27,15 @@ const uploadBase64Image = async (base64String, bucketName = 'logos', customFileN
         buffer = Buffer.from(base64String.replace(/^data:image\/[a-z]+;base64,/, ''), 'base64');
     }
     const fileExt = contentType.split('/')[1] || 'png';
-    const fileName = customFileName || `img-${Date.now()}.${fileExt}`;
-    // Ensure bucket exists
-    try {
-        await s3.send(new client_s3_1.HeadBucketCommand({ Bucket: bucketName }));
-    }
-    catch (err) {
-        try {
-            console.log(`Bucket ${bucketName} not found, attempting to create...`);
-            await s3.send(new client_s3_1.CreateBucketCommand({ Bucket: bucketName }));
-        }
-        catch (createErr) {
-            console.warn('Bucket creation warning (bucket may already exist):', createErr);
-        }
-    }
-    // Upload object to S3
-    await s3.send(new client_s3_1.PutObjectCommand({
-        Bucket: bucketName,
-        Key: fileName,
-        Body: buffer,
-        ContentType: contentType,
-    }));
-    // Return public S3 URL
-    const baseUrl = process.env.SUPABASE_URL || 'https://ctrlsyhzszlufdnguerz.supabase.co';
-    return `${baseUrl}/storage/v1/object/public/${bucketName}/${fileName}`;
+    const fileName = customFileName || `img-${Date.now()}-${Math.floor(Math.random() * 10000)}.${fileExt}`;
+    // Ensure category directory exists (e.g. uploads/images, uploads/qrcodes, uploads/documents)
+    const categoryFolder = folderCategory === 'logos' ? 'images' : (folderCategory || 'images');
+    const targetFolder = path_1.default.join(uploadsBaseDir, categoryFolder);
+    ensureDirectoryExists(targetFolder);
+    const filePath = path_1.default.join(targetFolder, fileName);
+    await fs_1.default.promises.writeFile(filePath, buffer);
+    // Return static URL path served by Express
+    return `/uploads/${categoryFolder}/${fileName}`;
 };
 exports.uploadBase64Image = uploadBase64Image;
 const generateAndUploadQrCode = async (textToEncode, itemId) => {
@@ -72,11 +58,11 @@ const generateAndUploadQrCode = async (textToEncode, itemId) => {
             });
             const cleanId = (itemId || 'report').replace(/[^a-zA-Z0-9_-]/g, '_');
             const fileName = `qr_${cleanId}.png`;
-            return await (0, exports.uploadBase64Image)(dataUrl, 'logos', fileName);
+            return await (0, exports.uploadBase64Image)(dataUrl, 'qrcodes', fileName);
         }
     }
     catch (err) {
-        console.error(`Error generating/uploading S3 QR code for ${itemId}:`, err);
+        console.error(`Error generating/uploading local QR code for ${itemId}:`, err);
     }
     return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(textToEncode)}`;
 };

@@ -43,6 +43,19 @@ app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Ensure local uploads directory structure exists
+const uploadsDir = path.join(process.cwd(), 'uploads');
+const uploadSubDirs = ['images', 'documents', 'qrcodes'];
+uploadSubDirs.forEach((subDir) => {
+  const fullPath = path.join(uploadsDir, subDir);
+  if (!fs.existsSync(fullPath)) {
+    fs.mkdirSync(fullPath, { recursive: true });
+  }
+});
+
+// Serve static uploads directory
+app.use('/uploads', express.static(uploadsDir));
+
 // Health check
 app.get('/api/health', (_req, res) => {
   res.json({

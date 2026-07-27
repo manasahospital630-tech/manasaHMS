@@ -66,7 +66,7 @@ export const getHospitalLogoHtml = (logoUrlInput?: string | null, heightPx = 70)
 export const getQrCodeHeaderSyncHtml = (verifyUrl: string, s3QrUrl?: string, label = 'VERIFY REPORT'): string => {
   const fallbackSvg = getQrSvgSync(verifyUrl, 58);
   const cleanFallback = fallbackSvg.replace(/"/g, '&quot;').replace(/\n/g, '');
-  const qrSrc = s3QrUrl && s3QrUrl.startsWith('http') ? s3QrUrl : `https://ctrlsyhzszlufdnguerz.supabase.co/storage/v1/object/public/logos/qr_report.png`;
+  const qrSrc = s3QrUrl && s3QrUrl.trim() !== '' ? s3QrUrl : `/uploads/qrcodes/qr_report.png`;
 
   return `
     <div class="qr-header-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 80px; height: 80px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 4px; background: #fff; text-align: center; box-sizing: border-box; flex-shrink: 0; margin-left: 20px;">
