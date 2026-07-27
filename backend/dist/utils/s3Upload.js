@@ -3,11 +3,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateAndUploadQrCode = exports.uploadBase64Image = void 0;
 const client_s3_1 = require("@aws-sdk/client-s3");
 const s3 = new client_s3_1.S3Client({
-    endpoint: 'https://pamobniywbuloarioxiu.storage.supabase.co/storage/v1/s3',
+    endpoint: process.env.SUPABASE_S3_ENDPOINT || 'https://ctrlsyhzszlufdnguerz.storage.supabase.co/storage/v1/s3',
     region: 'ap-northeast-1',
     credentials: {
-        accessKeyId: '587500859beeb248c8e195a2de262677',
-        secretAccessKey: '013a68865f89786abf864f9880579660da6709d1d0c94e73edda213ef7c2a954',
+        accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID || 'c429c15eac92ed5649c4cc502219f481',
+        secretAccessKey: process.env.SUPABASE_S3_SECRET_ACCESS_KEY || 'a6630d55c7dbf76585191afc00dcc30408ccef71e982f1d6b19e56aeaa947f9d',
     },
     forcePathStyle: true,
 });
@@ -48,7 +48,8 @@ const uploadBase64Image = async (base64String, bucketName = 'logos', customFileN
         ContentType: contentType,
     }));
     // Return public S3 URL
-    return `https://pamobniywbuloarioxiu.supabase.co/storage/v1/object/public/${bucketName}/${fileName}`;
+    const baseUrl = process.env.SUPABASE_URL || 'https://ctrlsyhzszlufdnguerz.supabase.co';
+    return `${baseUrl}/storage/v1/object/public/${bucketName}/${fileName}`;
 };
 exports.uploadBase64Image = uploadBase64Image;
 const generateAndUploadQrCode = async (textToEncode, itemId) => {

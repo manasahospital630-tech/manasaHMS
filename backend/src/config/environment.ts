@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const defaultDb = process.env.DATABASE_URL || 'postgresql://postgres.pamobniywbuloarioxiu:Nine%40248688944@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres';
+const defaultDb = process.env.DATABASE_URL || 'postgresql://hms_user.ctrlsyhzszlufdnguerz:Nine%40248688944@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres';
 const defaultJwt = 'super-secret-jwt-key-for-manasa-hms-production-2026';
 
 let rawPort: any = process.env.PORT || 5000;

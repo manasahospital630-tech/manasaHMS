@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS business_units (
   name VARCHAR(100) NOT NULL,
   parent_bu_id VARCHAR(50) REFERENCES business_units(bu_id) ON DELETE SET NULL,
   category VARCHAR(50),
-  unit_head_id VARCHAR(50) REFERENCES users(user_id) ON DELETE SET NULL,
+  unit_head_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
   status VARCHAR(20) DEFAULT 'Active',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS teams (
   team_name VARCHAR(100) NOT NULL,
   bu_id VARCHAR(50) NOT NULL REFERENCES business_units(bu_id) ON DELETE CASCADE,
   team_type VARCHAR(30) DEFAULT 'Owner',
-  team_lead_id VARCHAR(50) REFERENCES users(user_id) ON DELETE SET NULL,
+  team_lead_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS teams (
 -- 3. Team Members Table (Many-to-Many)
 CREATE TABLE IF NOT EXISTS team_members (
   team_id VARCHAR(50) REFERENCES teams(team_id) ON DELETE CASCADE,
-  user_id VARCHAR(50) REFERENCES users(user_id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
   assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (team_id, user_id)
 );

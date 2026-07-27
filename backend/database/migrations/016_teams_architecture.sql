@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS teams (
   bu_id VARCHAR(50),
   category VARCHAR(50) DEFAULT 'Clinical',
   team_type VARCHAR(30) DEFAULT 'Owner',
-  team_lead_id VARCHAR(50) REFERENCES users(user_id) ON DELETE SET NULL,
+  team_lead_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
   status VARCHAR(20) DEFAULT 'Active',
   description TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -21,7 +21,7 @@ ALTER TABLE teams ADD COLUMN IF NOT EXISTS description TEXT;
 -- 2. Team Members Table (Many-to-Many)
 CREATE TABLE IF NOT EXISTS team_members (
   team_id VARCHAR(50) REFERENCES teams(team_id) ON DELETE CASCADE,
-  user_id VARCHAR(50) REFERENCES users(user_id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
   assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (team_id, user_id)
 );

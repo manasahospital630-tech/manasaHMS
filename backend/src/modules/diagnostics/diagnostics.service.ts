@@ -489,7 +489,8 @@ export const getOrders = async () => {
     if (o.items && Array.isArray(o.items)) {
       o.items = o.items.map((item: any) => {
         const cleanId = (item.item_id || 'report').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const s3QrUrl = `https://pamobniywbuloarioxiu.supabase.co/storage/v1/object/public/logos/qr_${cleanId}.png`;
+        const supabaseUrl = process.env.SUPABASE_URL || 'https://ctrlsyhzszlufdnguerz.supabase.co';
+        const s3QrUrl = `${supabaseUrl}/storage/v1/object/public/logos/qr_${cleanId}.png`;
         const verifyUrl = `${frontendUrl}/verify/reports/${item.item_id}`;
 
         // Trigger S3 QR code upload asynchronously
@@ -967,7 +968,8 @@ export const getPublicReport = async (itemId: string) => {
   }
 
   const cleanId = (item.item_id || 'report').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const s3QrUrl = `https://pamobniywbuloarioxiu.supabase.co/storage/v1/object/public/logos/qr_${cleanId}.png`;
+  const supabaseUrl = process.env.SUPABASE_URL || 'https://ctrlsyhzszlufdnguerz.supabase.co';
+  const s3QrUrl = `${supabaseUrl}/storage/v1/object/public/logos/qr_${cleanId}.png`;
   const frontendUrl = process.env.FRONTEND_URL || 'https://hms-simon518.vercel.app';
   const verifyUrl = `${frontendUrl}/verify/reports/${item.item_id}`;
 

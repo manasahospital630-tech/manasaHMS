@@ -294,7 +294,7 @@ export const ServiceCatalog: React.FC = () => {
     const logoHtml = getHospitalLogoHtml(logoUrl, 70);
     const reportUrl = `${window.location.origin}/verify/reports/${item.item_id}`;
     const cleanId = (item.item_id || 'report').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const s3QrUrl = item.qr_code_url || `https://pamobniywbuloarioxiu.supabase.co/storage/v1/object/public/logos/qr_${cleanId}.png`;
+    const s3QrUrl = item.qr_code_url || `https://ctrlsyhzszlufdnguerz.supabase.co/storage/v1/object/public/logos/qr_${cleanId}.png`;
     const qrCodeHeaderHtml = getQrCodeHeaderSyncHtml(reportUrl, s3QrUrl, 'VERIFY REPORT');
 
     const printWindow = window.open('', '_blank');
