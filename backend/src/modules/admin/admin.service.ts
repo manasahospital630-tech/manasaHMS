@@ -302,7 +302,15 @@ export const upsertDoctorProfile = async (input: { doctorId: string; department:
 };
 
 export const getHospitalSettings = async () => {
-  const result = await query('SELECT * FROM hospital_settings WHERE id = 1');
+  let result = await query('SELECT * FROM hospital_settings WHERE id = 1');
+  if (result.rows.length === 0) {
+    await query(
+      `INSERT INTO hospital_settings (id, hospital_name, hospital_address, phone_number, website, email, gstin, license_info)
+       VALUES (1, 'Hannah Hospital & Research Center', '12-3-456, Main Road, Hyderabad, Telangana', '+91 98765 43210', 'https://manasahospital.co.in', 'info@manasahospital.co.in', '36AAACH1234F1Z5', 'PR-2026/8508')
+       ON DUPLICATE KEY UPDATE hospital_name = VALUES(hospital_name)`
+    );
+    result = await query('SELECT * FROM hospital_settings WHERE id = 1');
+  }
   return result.rows[0];
 };
 
@@ -321,14 +329,17 @@ export const updateHospitalSettings = async (input: {
   
   if (input.hospitalLogo && input.hospitalLogo.startsWith('data:image/')) {
     try {
-      logoUrl = await uploadBase64Image(input.hospitalLogo, 'logos');
-      console.log('Successfully uploaded logo to S3:', logoUrl);
+      logoUrl = await uploadBase64Image(input.hospitalLogo, 'images');
+      console.log('Successfully uploaded logo to local storage:', logoUrl);
     } catch (uploadErr) {
-      console.error('Error uploading logo to S3:', uploadErr);
+      console.error('Error uploading logo:', uploadErr);
     }
   }
 
-  const result = await query(
+  // Ensure row 1 exists
+  await getHospitalSettings();
+
+  await query(
     `UPDATE hospital_settings
      SET hospital_name = $1,
          hospital_address = $2,
@@ -338,10 +349,8 @@ export const updateHospitalSettings = async (input: {
          gstin = $6,
          license_info = $7,
          hospital_logo = COALESCE($8, hospital_logo),
-         theme = COALESCE($9, theme),
-         updated_at = NOW()
-     WHERE id = 1
-     RETURNING *`,
+         theme = COALESCE($9, theme)
+     WHERE id = 1`,
     [
       input.hospitalName,
       input.hospitalAddress,
@@ -354,7 +363,7 @@ export const updateHospitalSettings = async (input: {
       input.theme || null
     ]
   );
-  return result.rows[0];
+  return getHospitalSettings();
 };
 
 export const getDashboardStats = async () => {

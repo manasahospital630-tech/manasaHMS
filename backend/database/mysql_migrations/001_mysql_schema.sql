@@ -246,3 +246,18 @@ CREATE TABLE IF NOT EXISTS diagnostic_parameters (
     gender VARCHAR(20) DEFAULT 'Both',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS hospital_settings (
+    id INT PRIMARY KEY DEFAULT 1,
+    hospital_name VARCHAR(255) DEFAULT 'Hannah Hospital',
+    hospital_address TEXT,
+    phone_number VARCHAR(50) DEFAULT '+91 98765 43210',
+    website VARCHAR(255) DEFAULT 'https://manasahospital.co.in',
+    email VARCHAR(255) DEFAULT 'info@manasahospital.co.in',
+    gstin VARCHAR(50) DEFAULT '36AAACH1234F1Z5',
+    license_info VARCHAR(100) DEFAULT 'PR-2026/8508',
+    hospital_logo TEXT,
+    theme VARCHAR(50) DEFAULT 'light',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

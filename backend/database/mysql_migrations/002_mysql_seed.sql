@@ -58,3 +58,7 @@ INSERT IGNORE INTO inventory_items (item_id, item_name, sku, category, manufactu
 ('inv-05', 'Azithral 500mg', 'MED-AZI-500', 'Tablet', 'Alembic', 150, 20, 120.00, '2027-08-31', 'Azithromycin', 'BAT-AZI-001', 'RACK-A3', 60.00, true, 6),
 ('inv-06', 'Glycomet 500mg', 'MED-GLY-500', 'Tablet', 'USV', 250, 50, 60.00, '2028-11-30', 'Metformin HCl', 'BAT-GLY-001', 'RACK-A3', 30.00, true, 20),
 ('inv-07', 'Atorva 10mg', 'MED-ATO-100', 'Tablet', 'Zydus', 180, 40, 95.00, '2028-04-30', 'Atorvastatin', 'BAT-ATO-001', 'RACK-A4', 48.00, true, 10);
+
+-- Seed Hospital Settings
+INSERT IGNORE INTO hospital_settings (id, hospital_name, hospital_address, phone_number, website, email, gstin, license_info) VALUES
+(1, 'Hannah Hospital & Research Center', '12-3-456, Main Road, Hyderabad, Telangana', '+91 98765 43210', 'https://manasahospital.co.in', 'info@manasahospital.co.in', '36AAACH1234F1Z5', 'PR-2026/8508');
