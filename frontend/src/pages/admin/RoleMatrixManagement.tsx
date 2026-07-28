@@ -107,27 +107,45 @@ export const RoleMatrixManagement: React.FC = () => {
       setRoleDescription(detailedRole.description || '');
 
       const loadedPerms: PermissionItem[] = detailedRole.permissions || [];
+      const toBool = (val: any) => val === true || val === 1 || val === '1' || val === 'true';
+
       // Ensure all master modules exist in matrix
       const matrix: PermissionItem[] = modules.map(m => {
         const found = loadedPerms.find(p => p.module_id === m.module_id || p.module_key === m.module_key);
+        
+        let customPerms: Record<string, boolean> = {
+          view_timeline: false,
+          approve_bills: false,
+          modify_clinical_notes: false,
+          print_reports: false
+        };
+
+        if (found && found.custom_permissions) {
+          let cp = found.custom_permissions;
+          if (typeof cp === 'string') {
+            try { cp = JSON.parse(cp); } catch (e) { cp = {}; }
+          }
+          customPerms = {
+            view_timeline: toBool(cp.view_timeline),
+            approve_bills: toBool(cp.approve_bills),
+            modify_clinical_notes: toBool(cp.modify_clinical_notes),
+            print_reports: toBool(cp.print_reports)
+          };
+        }
+
         return {
           module_id: m.module_id,
           module_key: m.module_key,
           module_name: m.module_name,
           category: m.category,
-          can_view: found ? Boolean(found.can_view) : false,
-          can_create: found ? Boolean(found.can_create) : false,
-          can_edit: found ? Boolean(found.can_edit) : false,
-          can_delete: found ? Boolean(found.can_delete) : false,
-          can_append: found ? Boolean(found.can_append) : false,
-          can_append_to: found ? Boolean(found.can_append_to) : false,
-          is_hidden: found ? Boolean(found.is_hidden) : false,
-          custom_permissions: found?.custom_permissions || {
-            view_timeline: false,
-            approve_bills: false,
-            modify_clinical_notes: false,
-            print_reports: false
-          }
+          can_view: found ? toBool(found.can_view) : false,
+          can_create: found ? toBool(found.can_create) : false,
+          can_edit: found ? toBool(found.can_edit) : false,
+          can_delete: found ? toBool(found.can_delete) : false,
+          can_append: found ? toBool(found.can_append) : false,
+          can_append_to: found ? toBool(found.can_append_to) : false,
+          is_hidden: found ? toBool(found.is_hidden) : false,
+          custom_permissions: customPerms
         };
       });
 
@@ -186,11 +204,12 @@ export const RoleMatrixManagement: React.FC = () => {
     setPermissionMatrix(prev => prev.map(item => {
       if (item.module_id === moduleId) {
         const existing = item.custom_permissions || {};
+        const currentBool = existing[customKey] === true || (existing as any)[customKey] === 1 || (existing as any)[customKey] === '1';
         return {
           ...item,
           custom_permissions: {
             ...existing,
-            [customKey]: !existing[customKey]
+            [customKey]: !currentBool
           }
         };
       }

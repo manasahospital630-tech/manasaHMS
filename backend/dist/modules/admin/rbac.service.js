@@ -3,6 +3,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getUserPermissionMatrix = exports.deleteRole = exports.updateRole = exports.createRole = exports.getRoleById = exports.getRoles = exports.getModulesMaster = void 0;
 const database_1 = require("../../config/database");
 const uuid_1 = require("uuid");
+const toBoolean = (val) => {
+    if (val === true || val === 1 || val === '1' || val === 'true')
+        return true;
+    return false;
+};
 const getModulesMaster = async () => {
     const result = await (0, database_1.query)(`
     SELECT module_id, module_key, module_name, category, parent_module_id, display_order
@@ -23,7 +28,7 @@ const getRoles = async () => {
       r.created_at,
       r.updated_at,
       (SELECT COUNT(DISTINCT user_id) FROM user_roles ur WHERE ur.role_id = r.role_id) as user_count,
-      (SELECT COUNT(DISTINCT module_id) FROM role_permissions rp WHERE rp.role_id = r.role_id AND rp.can_view = true) as viewable_modules_count
+      (SELECT COUNT(DISTINCT module_id) FROM role_permissions rp WHERE rp.role_id = r.role_id AND (rp.can_view = 1 OR rp.can_view = true)) as viewable_modules_count
     FROM roles r
     ORDER BY r.is_system_role DESC, r.role_name ASC
   `);
@@ -41,13 +46,13 @@ const getRoleById = async (roleId) => {
       mm.module_key,
       mm.module_name,
       mm.category,
-      COALESCE(rp.can_view, false) as can_view,
-      COALESCE(rp.can_create, false) as can_create,
-      COALESCE(rp.can_edit, false) as can_edit,
-      COALESCE(rp.can_delete, false) as can_delete,
-      COALESCE(rp.can_append, false) as can_append,
-      COALESCE(rp.can_append_to, false) as can_append_to,
-      COALESCE(rp.is_hidden, false) as is_hidden,
+      COALESCE(rp.can_view, 0) as can_view,
+      COALESCE(rp.can_create, 0) as can_create,
+      COALESCE(rp.can_edit, 0) as can_edit,
+      COALESCE(rp.can_delete, 0) as can_delete,
+      COALESCE(rp.can_append, 0) as can_append,
+      COALESCE(rp.can_append_to, 0) as can_append_to,
+      COALESCE(rp.is_hidden, 0) as is_hidden,
       COALESCE(rp.custom_permissions, '{}') as custom_permissions
     FROM modules_master mm
     LEFT JOIN role_permissions rp ON mm.module_id = rp.module_id AND rp.role_id = $1
@@ -65,13 +70,13 @@ const getRoleById = async (roleId) => {
         }
         return {
             ...p,
-            can_view: Boolean(p.can_view),
-            can_create: Boolean(p.can_create),
-            can_edit: Boolean(p.can_edit),
-            can_delete: Boolean(p.can_delete),
-            can_append: Boolean(p.can_append),
-            can_append_to: Boolean(p.can_append_to),
-            is_hidden: Boolean(p.is_hidden),
+            can_view: toBoolean(p.can_view),
+            can_create: toBoolean(p.can_create),
+            can_edit: toBoolean(p.can_edit),
+            can_delete: toBoolean(p.can_delete),
+            can_append: toBoolean(p.can_append),
+            can_append_to: toBoolean(p.can_append_to),
+            is_hidden: toBoolean(p.is_hidden),
             custom_permissions: custom_permissions || {}
         };
     });
@@ -90,10 +95,11 @@ const createRole = async (input) => {
   `, [roleId, role_name, description || '']);
     if (permissions && Array.isArray(permissions)) {
         for (const p of permissions) {
-            const hidden = p.is_hidden || false;
+            const hidden = toBoolean(p.is_hidden);
+            const permId = (0, uuid_1.v4)();
             await (0, database_1.query)(`
-        INSERT INTO role_permissions (role_id, module_id, can_view, can_create, can_edit, can_delete, can_append, can_append_to, is_hidden, custom_permissions)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO role_permissions (id, role_id, module_id, can_view, can_create, can_edit, can_delete, can_append, can_append_to, is_hidden, custom_permissions)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON DUPLICATE KEY UPDATE
           can_view = VALUES(can_view),
           can_create = VALUES(can_create),
@@ -102,17 +108,19 @@ const createRole = async (input) => {
           can_append = VALUES(can_append),
           can_append_to = VALUES(can_append_to),
           is_hidden = VALUES(is_hidden),
-          custom_permissions = VALUES(custom_permissions);
+          custom_permissions = VALUES(custom_permissions),
+          updated_at = NOW();
       `, [
+                permId,
                 roleId,
                 p.module_id,
-                hidden ? false : (p.can_view || false),
-                hidden ? false : (p.can_create || false),
-                hidden ? false : (p.can_edit || false),
-                hidden ? false : (p.can_delete || false),
-                hidden ? false : (p.can_append || false),
-                hidden ? false : (p.can_append_to || false),
-                hidden,
+                hidden ? 0 : (toBoolean(p.can_view) ? 1 : 0),
+                hidden ? 0 : (toBoolean(p.can_create) ? 1 : 0),
+                hidden ? 0 : (toBoolean(p.can_edit) ? 1 : 0),
+                hidden ? 0 : (toBoolean(p.can_delete) ? 1 : 0),
+                hidden ? 0 : (toBoolean(p.can_append) ? 1 : 0),
+                hidden ? 0 : (toBoolean(p.can_append_to) ? 1 : 0),
+                hidden ? 1 : 0,
                 JSON.stringify(hidden ? {} : (p.custom_permissions || {}))
             ]);
         }
@@ -133,10 +141,11 @@ const updateRole = async (roleId, input) => {
     }
     if (permissions && Array.isArray(permissions)) {
         for (const p of permissions) {
-            const hidden = p.is_hidden || false;
+            const hidden = toBoolean(p.is_hidden);
+            const permId = (0, uuid_1.v4)();
             await (0, database_1.query)(`
-        INSERT INTO role_permissions (role_id, module_id, can_view, can_create, can_edit, can_delete, can_append, can_append_to, is_hidden, custom_permissions)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        INSERT INTO role_permissions (id, role_id, module_id, can_view, can_create, can_edit, can_delete, can_append, can_append_to, is_hidden, custom_permissions)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON DUPLICATE KEY UPDATE
           can_view = VALUES(can_view),
           can_create = VALUES(can_create),
@@ -148,15 +157,16 @@ const updateRole = async (roleId, input) => {
           custom_permissions = VALUES(custom_permissions),
           updated_at = NOW();
       `, [
+                permId,
                 roleId,
                 p.module_id,
-                hidden ? false : (p.can_view || false),
-                hidden ? false : (p.can_create || false),
-                hidden ? false : (p.can_edit || false),
-                hidden ? false : (p.can_delete || false),
-                hidden ? false : (p.can_append || false),
-                hidden ? false : (p.can_append_to || false),
-                hidden,
+                hidden ? 0 : (toBoolean(p.can_view) ? 1 : 0),
+                hidden ? 0 : (toBoolean(p.can_create) ? 1 : 0),
+                hidden ? 0 : (toBoolean(p.can_edit) ? 1 : 0),
+                hidden ? 0 : (toBoolean(p.can_delete) ? 1 : 0),
+                hidden ? 0 : (toBoolean(p.can_append) ? 1 : 0),
+                hidden ? 0 : (toBoolean(p.can_append_to) ? 1 : 0),
+                hidden ? 1 : 0,
                 JSON.stringify(hidden ? {} : (p.custom_permissions || {}))
             ]);
         }
@@ -206,13 +216,13 @@ const getUserPermissionMatrix = async (userId) => {
         const matrix = {};
         res.rows.forEach(r => {
             matrix[r.module_key] = {
-                can_view: Boolean(r.is_hidden) ? false : Boolean(r.can_view),
-                can_create: Boolean(r.is_hidden) ? false : Boolean(r.can_create),
-                can_edit: Boolean(r.is_hidden) ? false : Boolean(r.can_edit),
-                can_delete: Boolean(r.is_hidden) ? false : Boolean(r.can_delete),
-                can_append: Boolean(r.is_hidden) ? false : Boolean(r.can_append),
-                can_append_to: Boolean(r.is_hidden) ? false : Boolean(r.can_append_to),
-                is_hidden: Boolean(r.is_hidden),
+                can_view: toBoolean(r.is_hidden) ? false : toBoolean(r.can_view),
+                can_create: toBoolean(r.is_hidden) ? false : toBoolean(r.can_create),
+                can_edit: toBoolean(r.is_hidden) ? false : toBoolean(r.can_edit),
+                can_delete: toBoolean(r.is_hidden) ? false : toBoolean(r.can_delete),
+                can_append: toBoolean(r.is_hidden) ? false : toBoolean(r.can_append),
+                can_append_to: toBoolean(r.is_hidden) ? false : toBoolean(r.can_append_to),
+                is_hidden: toBoolean(r.is_hidden),
                 custom_permissions: {}
             };
         });
