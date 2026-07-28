@@ -5,12 +5,14 @@ import { v4 as uuidv4 } from 'uuid';
 export interface CreateDepartmentInput {
   departmentName: string;
   departmentCode?: string;
+  categoryName?: string;
   description?: string;
 }
 
 export interface UpdateDepartmentInput {
   departmentName?: string;
   departmentCode?: string;
+  categoryName?: string;
   description?: string;
   isActive?: boolean;
 }
@@ -21,6 +23,7 @@ export const getAllDepartments = async () => {
       d.department_id,
       d.department_name,
       d.department_code,
+      d.category_name,
       d.description,
       d.is_active,
       d.created_at,
@@ -32,14 +35,15 @@ export const getAllDepartments = async () => {
       LOWER(u.employee_department) = LOWER(d.department_name) OR 
       u.user_id IN (SELECT doctor_id FROM doctor_profiles dp WHERE LOWER(dp.department) = LOWER(d.department_name))
     )
-    GROUP BY d.department_id, d.department_name, d.department_code, d.description, d.is_active, d.created_at, d.updated_at
-    ORDER BY d.department_name ASC
+    GROUP BY d.department_id, d.department_name, d.department_code, d.category_name, d.description, d.is_active, d.created_at, d.updated_at
+    ORDER BY d.category_name ASC, d.department_name ASC
   `);
 
   return result.rows.map(row => ({
     departmentId: row.department_id,
     departmentName: row.department_name,
     departmentCode: row.department_code || '',
+    categoryName: row.category_name || 'Clinical Departments',
     description: row.description || '',
     isActive: row.is_active === 1 || row.is_active === true,
     memberCount: parseInt(row.member_count, 10) || 0,
@@ -58,12 +62,13 @@ export const createDepartment = async (input: CreateDepartmentInput) => {
 
   const deptId = uuidv4();
   const code = (input.departmentCode || cleanName.substring(0, 4).toUpperCase()).trim();
+  const cat = (input.categoryName || 'Clinical Departments').trim();
   const desc = (input.description || '').trim();
 
   await query(`
-    INSERT INTO departments (department_id, department_name, department_code, description, is_active)
-    VALUES ($1, $2, $3, $4, TRUE)
-  `, [deptId, cleanName, code, desc]);
+    INSERT INTO departments (department_id, department_name, department_code, category_name, description, is_active)
+    VALUES ($1, $2, $3, $4, $5, TRUE)
+  `, [deptId, cleanName, code, cat, desc]);
 
   const result = await query('SELECT * FROM departments WHERE department_id = $1', [deptId]);
   return result.rows[0];
@@ -88,6 +93,11 @@ export const updateDepartment = async (id: string, input: UpdateDepartmentInput)
   if (input.departmentCode !== undefined) {
     params.push(input.departmentCode.trim());
     fields.push(`department_code = $${params.length}`);
+  }
+
+  if (input.categoryName !== undefined && input.categoryName.trim()) {
+    params.push(input.categoryName.trim());
+    fields.push(`category_name = $${params.length}`);
   }
 
   if (input.description !== undefined) {

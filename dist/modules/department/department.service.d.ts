@@ -1,11 +1,13 @@
 export interface CreateDepartmentInput {
     departmentName: string;
     departmentCode?: string;
+    categoryName?: string;
     description?: string;
 }
 export interface UpdateDepartmentInput {
     departmentName?: string;
     departmentCode?: string;
+    categoryName?: string;
     description?: string;
     isActive?: boolean;
 }
@@ -13,6 +15,7 @@ export declare const getAllDepartments: () => Promise<{
     departmentId: any;
     departmentName: any;
     departmentCode: any;
+    categoryName: any;
     description: any;
     isActive: boolean;
     memberCount: number;
