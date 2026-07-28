@@ -37,7 +37,7 @@ export declare const updateUserSchema: z.ZodObject<{
     email: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     password: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     role: z.ZodOptional<z.ZodString>;
-    isActive: z.ZodOptional<z.ZodBoolean>;
+    isActive: z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodBoolean, z.ZodNumber, z.ZodString]>, boolean, string | number | boolean>>;
     firstName: z.ZodOptional<z.ZodString>;
     lastName: z.ZodOptional<z.ZodString>;
     phone: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
@@ -68,7 +68,7 @@ export declare const updateUserSchema: z.ZodObject<{
     specialization?: string | undefined;
     licenseNumber?: string | undefined;
     consultationFee?: string | number | undefined;
-    isActive?: boolean | undefined;
+    isActive?: string | number | boolean | undefined;
 }>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;

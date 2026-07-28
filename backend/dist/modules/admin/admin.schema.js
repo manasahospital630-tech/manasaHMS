@@ -18,7 +18,7 @@ exports.updateUserSchema = zod_1.z.object({
     email: zod_1.z.string().email().max(255).optional().or(zod_1.z.literal('')),
     password: zod_1.z.string().min(6).max(128).optional().or(zod_1.z.literal('')),
     role: zod_1.z.string().min(1).max(100).optional(),
-    isActive: zod_1.z.boolean().optional(),
+    isActive: zod_1.z.union([zod_1.z.boolean(), zod_1.z.number(), zod_1.z.string()]).transform((val) => val === true || val === 1 || val === '1' || val === 'true').optional(),
     firstName: zod_1.z.string().min(1).max(100).optional(),
     lastName: zod_1.z.string().min(1).max(100).optional(),
     phone: zod_1.z.string().max(20).optional().or(zod_1.z.literal('')),

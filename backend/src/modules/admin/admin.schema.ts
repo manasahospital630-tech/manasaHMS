@@ -17,7 +17,7 @@ export const updateUserSchema = z.object({
   email: z.string().email().max(255).optional().or(z.literal('')),
   password: z.string().min(6).max(128).optional().or(z.literal('')),
   role: z.string().min(1).max(100).optional(),
-  isActive: z.boolean().optional(),
+  isActive: z.union([z.boolean(), z.number(), z.string()]).transform((val) => val === true || val === 1 || val === '1' || val === 'true').optional(),
   firstName: z.string().min(1).max(100).optional(),
   lastName: z.string().min(1).max(100).optional(),
   phone: z.string().max(20).optional().or(z.literal('')),

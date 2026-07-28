@@ -202,7 +202,7 @@ const UserManagement: React.FC = () => {
       labCertId: user.license_number || '',
       pharmacyLicense: user.license_number || '',
       employeeId: user.license_number || '',
-      isActive: user.is_active !== undefined ? user.is_active : true,
+      isActive: user.is_active !== undefined ? (user.is_active === true || user.is_active === 1 || user.is_active === '1' || user.is_active === 'true') : true,
     });
     setError('');
     setShowModal(true);
