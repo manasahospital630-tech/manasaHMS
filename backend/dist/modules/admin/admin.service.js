@@ -52,6 +52,14 @@ const createUser = async (input) => {
     const userId = uuidv4();
     await (0, database_1.query)(`INSERT INTO users (user_id, email, password_hash, first_name, last_name, phone, role, is_active, employee_department, employee_specialization, license_number)
      VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9, $10)`, [userId, cleanEmail, passwordHash, input.firstName, input.lastName, input.phone || null, input.role, dept || null, spec || null, lic || null]);
+    // Sync user_roles junction table for RBAC permissions
+    if (input.role) {
+        const roleMatch = await (0, database_1.query)('SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $1 LIMIT 1', [input.role]);
+        if (roleMatch.rows.length > 0) {
+            await (0, database_1.query)('DELETE FROM user_roles WHERE user_id = $1', [userId]);
+            await (0, database_1.query)('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [userId, roleMatch.rows[0].role_id]);
+        }
+    }
     if (input.role === 'Doctor' || dept || fee > 0) {
         await (0, database_1.query)(`
       INSERT INTO doctor_profiles (doctor_id, department, specialization, license_number, consultation_fee)
@@ -106,11 +114,19 @@ const updateUser = async (id, input) => {
         values.push(id);
         await (0, database_1.query)(`UPDATE users SET ${fields.join(', ')} WHERE user_id = $${idx}`, values);
     }
-    // Handle doctor profile sync
+    // Handle doctor profile sync & user_roles sync
     const userRes = await (0, database_1.query)(`SELECT user_id, role, employee_department FROM users WHERE user_id = $1`, [id]);
     if (userRes.rows.length === 0)
         throw new errorHandler_1.AppError('User not found.', 404);
     const user = userRes.rows[0];
+    if (input.role || user.role) {
+        const roleToMatch = input.role || user.role;
+        const roleMatch = await (0, database_1.query)('SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $1 LIMIT 1', [roleToMatch]);
+        if (roleMatch.rows.length > 0) {
+            await (0, database_1.query)('DELETE FROM user_roles WHERE user_id = $1', [id]);
+            await (0, database_1.query)('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [id, roleMatch.rows[0].role_id]);
+        }
+    }
     const dept = input.department !== undefined ? input.department : (user.employee_department || '');
     const fee = input.consultationFee !== undefined && input.consultationFee !== null && input.consultationFee !== '' ? parseFloat(String(input.consultationFee)) : null;
     if (user.role === 'Doctor' || input.department !== undefined || fee !== null) {

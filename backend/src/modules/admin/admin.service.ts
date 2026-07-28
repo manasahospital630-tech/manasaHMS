@@ -51,6 +51,18 @@ export const createUser = async (input: CreateUserInput) => {
     [userId, cleanEmail, passwordHash, input.firstName, input.lastName, input.phone || null, input.role, dept || null, spec || null, lic || null]
   );
 
+  // Sync user_roles junction table for RBAC permissions
+  if (input.role) {
+    const roleMatch = await query(
+      'SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $1 LIMIT 1',
+      [input.role]
+    );
+    if (roleMatch.rows.length > 0) {
+      await query('DELETE FROM user_roles WHERE user_id = $1', [userId]);
+      await query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [userId, roleMatch.rows[0].role_id]);
+    }
+  }
+
   if (input.role === 'Doctor' || dept || fee > 0) {
     await query(`
       INSERT INTO doctor_profiles (doctor_id, department, specialization, license_number, consultation_fee)
@@ -116,10 +128,22 @@ export const updateUser = async (id: string, input: UpdateUserInput) => {
     );
   }
 
-  // Handle doctor profile sync
+  // Handle doctor profile sync & user_roles sync
   const userRes = await query(`SELECT user_id, role, employee_department FROM users WHERE user_id = $1`, [id]);
   if (userRes.rows.length === 0) throw new AppError('User not found.', 404);
   const user = userRes.rows[0];
+
+  if (input.role || user.role) {
+    const roleToMatch = input.role || user.role;
+    const roleMatch = await query(
+      'SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $1 LIMIT 1',
+      [roleToMatch]
+    );
+    if (roleMatch.rows.length > 0) {
+      await query('DELETE FROM user_roles WHERE user_id = $1', [id]);
+      await query('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [id, roleMatch.rows[0].role_id]);
+    }
+  }
 
   const dept = input.department !== undefined ? input.department : (user.employee_department || '');
   const fee = input.consultationFee !== undefined && input.consultationFee !== null && input.consultationFee !== '' ? parseFloat(String(input.consultationFee)) : null;
