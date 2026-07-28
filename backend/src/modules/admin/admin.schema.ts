@@ -6,7 +6,7 @@ export const createUserSchema = z.object({
   firstName: z.string().min(1).max(100).trim(),
   lastName: z.string().min(1).max(100).trim(),
   phone: z.string().max(20).optional().or(z.literal('')),
-  role: z.enum(['Admin', 'Management', 'Doctor', 'Nurse', 'Receptionist', 'Pharmacist', 'Biller', 'Patient', 'Incharge']),
+  role: z.string().min(1).max(100).trim(),
   department: z.string().max(100).optional().or(z.literal('')),
   specialization: z.string().max(100).optional().or(z.literal('')),
   licenseNumber: z.string().max(100).optional().or(z.literal('')),
@@ -16,7 +16,7 @@ export const createUserSchema = z.object({
 export const updateUserSchema = z.object({
   email: z.string().email().max(255).optional().or(z.literal('')),
   password: z.string().min(6).max(128).optional().or(z.literal('')),
-  role: z.enum(['Admin', 'Management', 'Doctor', 'Nurse', 'Receptionist', 'Pharmacist', 'Biller', 'Patient', 'Incharge']).optional(),
+  role: z.string().min(1).max(100).optional(),
   isActive: z.boolean().optional(),
   firstName: z.string().min(1).max(100).optional(),
   lastName: z.string().min(1).max(100).optional(),

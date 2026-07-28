@@ -54,8 +54,8 @@ export const createUser = async (input: CreateUserInput) => {
   // Sync user_roles junction table for RBAC permissions
   if (input.role) {
     const roleMatch = await query(
-      'SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $1 LIMIT 1',
-      [input.role]
+      'SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $2 LIMIT 1',
+      [input.role, input.role]
     );
     if (roleMatch.rows.length > 0) {
       await query('DELETE FROM user_roles WHERE user_id = $1', [userId]);
@@ -136,8 +136,8 @@ export const updateUser = async (id: string, input: UpdateUserInput) => {
   if (input.role || user.role) {
     const roleToMatch = input.role || user.role;
     const roleMatch = await query(
-      'SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $1 LIMIT 1',
-      [roleToMatch]
+      'SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $2 LIMIT 1',
+      [roleToMatch, roleToMatch]
     );
     if (roleMatch.rows.length > 0) {
       await query('DELETE FROM user_roles WHERE user_id = $1', [id]);

@@ -8,7 +8,7 @@ exports.createUserSchema = zod_1.z.object({
     firstName: zod_1.z.string().min(1).max(100).trim(),
     lastName: zod_1.z.string().min(1).max(100).trim(),
     phone: zod_1.z.string().max(20).optional().or(zod_1.z.literal('')),
-    role: zod_1.z.enum(['Admin', 'Management', 'Doctor', 'Nurse', 'Receptionist', 'Pharmacist', 'Biller', 'Patient', 'Incharge']),
+    role: zod_1.z.string().min(1).max(100).trim(),
     department: zod_1.z.string().max(100).optional().or(zod_1.z.literal('')),
     specialization: zod_1.z.string().max(100).optional().or(zod_1.z.literal('')),
     licenseNumber: zod_1.z.string().max(100).optional().or(zod_1.z.literal('')),
@@ -17,7 +17,7 @@ exports.createUserSchema = zod_1.z.object({
 exports.updateUserSchema = zod_1.z.object({
     email: zod_1.z.string().email().max(255).optional().or(zod_1.z.literal('')),
     password: zod_1.z.string().min(6).max(128).optional().or(zod_1.z.literal('')),
-    role: zod_1.z.enum(['Admin', 'Management', 'Doctor', 'Nurse', 'Receptionist', 'Pharmacist', 'Biller', 'Patient', 'Incharge']).optional(),
+    role: zod_1.z.string().min(1).max(100).optional(),
     isActive: zod_1.z.boolean().optional(),
     firstName: zod_1.z.string().min(1).max(100).optional(),
     lastName: zod_1.z.string().min(1).max(100).optional(),

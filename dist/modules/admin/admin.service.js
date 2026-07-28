@@ -54,7 +54,7 @@ const createUser = async (input) => {
      VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9, $10)`, [userId, cleanEmail, passwordHash, input.firstName, input.lastName, input.phone || null, input.role, dept || null, spec || null, lic || null]);
     // Sync user_roles junction table for RBAC permissions
     if (input.role) {
-        const roleMatch = await (0, database_1.query)('SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $1 LIMIT 1', [input.role]);
+        const roleMatch = await (0, database_1.query)('SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $2 LIMIT 1', [input.role, input.role]);
         if (roleMatch.rows.length > 0) {
             await (0, database_1.query)('DELETE FROM user_roles WHERE user_id = $1', [userId]);
             await (0, database_1.query)('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [userId, roleMatch.rows[0].role_id]);
@@ -121,7 +121,7 @@ const updateUser = async (id, input) => {
     const user = userRes.rows[0];
     if (input.role || user.role) {
         const roleToMatch = input.role || user.role;
-        const roleMatch = await (0, database_1.query)('SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $1 LIMIT 1', [roleToMatch]);
+        const roleMatch = await (0, database_1.query)('SELECT role_id FROM roles WHERE LOWER(role_name) = LOWER($1) OR role_id = $2 LIMIT 1', [roleToMatch, roleToMatch]);
         if (roleMatch.rows.length > 0) {
             await (0, database_1.query)('DELETE FROM user_roles WHERE user_id = $1', [id]);
             await (0, database_1.query)('INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)', [id, roleMatch.rows[0].role_id]);
