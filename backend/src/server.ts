@@ -19,6 +19,7 @@ import adminRoutes from './modules/admin/admin.routes';
 import ipRoutes from './modules/inpatient/ip.routes';
 import diagnosticsRoutes from './modules/diagnostics/diagnostics.routes';
 import emergencyRoutes from './modules/emergency/emergency.routes';
+import departmentRoutes from './modules/department/department.routes';
 
 // Global exception handlers to prevent 503 crashes on Hostinger / Phusion Passenger / PM2
 process.on('uncaughtException', (err) => {
@@ -88,6 +89,8 @@ app.use('/api/analytics', adminRoutes);
 app.use('/api/inpatient', ipRoutes);
 app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api/v1/emergency', emergencyRoutes);
+app.use('/api/departments', departmentRoutes);
+app.use('/api/admin/departments', departmentRoutes);
 
 // Serve static assets dynamically whenever index.html is available
 const staticCandidates = [

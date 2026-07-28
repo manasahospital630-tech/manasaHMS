@@ -76,16 +76,24 @@ const UserManagement: React.FC = () => {
 
   const [dynamicRoles, setDynamicRoles] = useState<any[]>([]);
 
+  const [departmentOptionsList, setDepartmentOptionsList] = useState<string[]>(DEPARTMENT_OPTIONS);
+
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [userRes, rolesRes] = await Promise.all([
+      const [userRes, rolesRes, deptRes] = await Promise.all([
         api.get(`/admin/users?search=${encodeURIComponent(search)}&limit=200`),
-        api.get('/admin/roles').catch(() => ({ data: { data: [] } }))
+        api.get('/admin/roles').catch(() => ({ data: { data: [] } })),
+        api.get('/departments').catch(() => ({ data: { data: [] } }))
       ]);
       setUsers(userRes.data.data?.users || []);
       if (rolesRes.data.data && rolesRes.data.data.length > 0) {
         setDynamicRoles(rolesRes.data.data);
+      }
+      if (deptRes.data?.data && deptRes.data.data.length > 0) {
+        const fetched = deptRes.data.data.map((d: any) => d.departmentName);
+        const combined = Array.from(new Set([...fetched, ...DEPARTMENT_OPTIONS]));
+        setDepartmentOptionsList(combined);
       }
     } catch (err: any) {
       console.error('Failed to fetch users:', err);
@@ -450,7 +458,7 @@ const UserManagement: React.FC = () => {
                       required
                       style={{ width: '100%', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                     >
-                      {DEPARTMENT_OPTIONS.map((d) => (
+                      {departmentOptionsList.map((d) => (
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </select>

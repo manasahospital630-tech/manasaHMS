@@ -75,3 +75,16 @@ INSERT IGNORE INTO hospital_beds (bed_id, bed_number, ward_name, ward_type, floo
 ('bed-203', 'B-203', 'ICU Special Care', 'ICU', 2, 'Occupied', 5000.00),
 ('bed-301', 'B-301', 'Deluxe Private Suite', 'Deluxe', 3, 'Available', 3500.00),
 ('bed-302', 'B-302', 'Deluxe Private Suite', 'Deluxe', 3, 'Available', 3500.00);
+
+-- Seed Departments
+INSERT IGNORE INTO departments (department_id, department_name, department_code, description, is_active) VALUES
+('dept-01', 'Cardiology', 'CARD', 'Heart, Vascular & Cardiovascular Care', true),
+('dept-02', 'Orthopedics', 'ORTHO', 'Bones, Joints & Musculoskeletal Surgery', true),
+('dept-03', 'Pediatrics', 'PED', 'Child & Adolescent Medicine', true),
+('dept-04', 'General Medicine', 'GEN', 'Primary Care & Internal Consultations', true),
+('dept-05', 'Neurology', 'NEURO', 'Brain, Spine & Nervous System Care', true),
+('dept-06', 'Radiology & Imaging', 'RAD', 'X-Ray, Ultrasound, CT & MRI Diagnostics', true),
+('dept-07', 'Pathology & Lab', 'PATH', 'Clinical Laboratory & Pathology Services', true),
+('dept-08', 'Emergency Care', 'EMERG', '24x7 Trauma & Critical Care Unit', true),
+('dept-09', 'Dermatology', 'DERM', 'Skin, Hair & Cosmetic Dermatology', true),
+('dept-10', 'Gynecology & Obstetrics', 'GYN', 'Womens Health & Maternity Care', true);

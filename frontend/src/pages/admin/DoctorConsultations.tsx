@@ -19,11 +19,20 @@ const DoctorConsultations: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  const [departmentsList, setDepartmentsList] = useState<string[]>([]);
+
   const fetchProfiles = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/admin/doctor-profiles');
-      setProfiles(res.data.data || []);
+      const [profRes, deptRes] = await Promise.allSettled([
+        api.get('/admin/doctor-profiles'),
+        api.get('/departments')
+      ]);
+      if (profRes.status === 'fulfilled') setProfiles(profRes.value.data.data || []);
+      if (deptRes.status === 'fulfilled' && deptRes.value.data?.data) {
+        const names = deptRes.value.data.data.map((d: any) => d.departmentName);
+        setDepartmentsList(names);
+      }
       setErrorMsg('');
     } catch (err: any) {
       setErrorMsg('Failed to load doctor consultation profiles.');
@@ -171,11 +180,15 @@ const DoctorConsultations: React.FC = () => {
                     }))
                   ]}
                 />
-                <Input
+                <Select
                   label="Department *"
-                  placeholder="e.g. Cardiology, Pediatrics"
                   value={department}
                   onChange={e => setDepartment(e.target.value)}
+                  options={[
+                    { value: '', label: '-- Select Department --' },
+                    ...departmentsList.map(d => ({ value: d, label: d })),
+                    ...(department && !departmentsList.includes(department) ? [{ value: department, label: department }] : [])
+                  ]}
                   required
                 />
                 <Input

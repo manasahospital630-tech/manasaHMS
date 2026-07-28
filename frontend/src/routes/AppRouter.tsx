@@ -22,6 +22,7 @@ import MedicineSales from '../pages/pharmacy/MedicineSales';
 import InvoiceGenerator from '../pages/billing/InvoiceGenerator';
 import PaymentProcessing from '../pages/billing/PaymentProcessing';
 import UserManagement from '../pages/admin/UserManagement';
+import DepartmentsManagement from '../pages/admin/DepartmentsManagement';
 import StaffProfilePage from '../pages/admin/StaffProfilePage';
 import SystemSettings from '../pages/admin/SystemSettings';
 import HealthSummary from '../pages/patient-portal/HealthSummary';
@@ -69,6 +70,7 @@ const AppRouter: React.FC = () => (
 
         <Route element={<RoleProtectedRoute permittedRoles={['Admin', 'Management', 'Incharge']} />}>
           <Route path="admin/dashboard" element={<HMSDashboard />} />
+          <Route path="admin/departments" element={<DepartmentsManagement />} />
         </Route>
 
         <Route element={<RoleProtectedRoute permittedRoles={['Admin']} />}>

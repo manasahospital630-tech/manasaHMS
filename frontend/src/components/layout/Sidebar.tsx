@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { Home, Users, Calendar, UserPlus, Stethoscope, Pill, DollarSign, Settings, Activity, Heart, ClipboardList, FileText, Package, BarChart3, TrendingUp, Menu, X, ShoppingCart, Beaker, ShieldAlert } from 'lucide-react';
+import { Home, Users, Calendar, UserPlus, Stethoscope, Pill, DollarSign, Settings, Activity, Heart, ClipboardList, FileText, Package, BarChart3, TrendingUp, Menu, X, ShoppingCart, Beaker, ShieldAlert, Building2 } from 'lucide-react';
 
 interface NavItem {
   icon: any;
@@ -13,6 +13,7 @@ interface NavItem {
 const navByRole: Record<string, NavItem[]> = {
   Admin: [
     { icon: Home, label: 'Dashboard', path: '/admin/dashboard' },
+    { icon: Building2, label: 'Departments', path: '/admin/departments' },
     { icon: Users, label: 'User Management', path: '/admin/users' },
     { icon: Users, label: 'Patients', path: '/reception/patients' },
     { icon: UserPlus, label: 'OP Check-in', path: '/reception/opcheckin' },

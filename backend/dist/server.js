@@ -23,6 +23,7 @@ const admin_routes_1 = __importDefault(require("./modules/admin/admin.routes"));
 const ip_routes_1 = __importDefault(require("./modules/inpatient/ip.routes"));
 const diagnostics_routes_1 = __importDefault(require("./modules/diagnostics/diagnostics.routes"));
 const emergency_routes_1 = __importDefault(require("./modules/emergency/emergency.routes"));
+const department_routes_1 = __importDefault(require("./modules/department/department.routes"));
 // Global exception handlers to prevent 503 crashes on Hostinger / Phusion Passenger / PM2
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err);
@@ -83,6 +84,8 @@ app.use('/api/analytics', admin_routes_1.default);
 app.use('/api/inpatient', ip_routes_1.default);
 app.use('/api/diagnostics', diagnostics_routes_1.default);
 app.use('/api/v1/emergency', emergency_routes_1.default);
+app.use('/api/departments', department_routes_1.default);
+app.use('/api/admin/departments', department_routes_1.default);
 // Serve static assets dynamically whenever index.html is available
 const staticCandidates = [
     path_1.default.join(__dirname, '../../dist'),

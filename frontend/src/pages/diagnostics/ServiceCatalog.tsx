@@ -120,14 +120,32 @@ export const ServiceCatalog: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const [catsRes, servsRes, pkgsRes, settingsRes] = await Promise.all([
+      const [catsRes, servsRes, pkgsRes, settingsRes, deptRes] = await Promise.all([
         api.get('/diagnostics/categories'),
         api.get('/diagnostics/services'),
         api.get('/diagnostics/packages'),
-        api.get('/admin/hospital-settings/public').catch(() => ({ data: { success: false } }))
+        api.get('/admin/hospital-settings/public').catch(() => ({ data: { success: false } })),
+        api.get('/departments').catch(() => ({ data: { data: [] } }))
       ]);
 
-      if (catsRes.data.success) setCategories(catsRes.data.data);
+      if (catsRes.data.success) {
+        let existingCats = catsRes.data.data || [];
+        if (deptRes.data?.data) {
+          const deptCats = deptRes.data.data.map((d: any) => ({
+            category_id: `dept-${d.departmentId}`,
+            name: d.departmentName,
+            description: d.description
+          }));
+          // Merge unique categories by name
+          const catNames = new Set(existingCats.map((c: any) => c.name.toLowerCase()));
+          for (const dc of deptCats) {
+            if (!catNames.has(dc.name.toLowerCase())) {
+              existingCats.push(dc);
+            }
+          }
+        }
+        setCategories(existingCats);
+      }
       if (servsRes.data.success) {
         const freshServices = servsRes.data.data;
         setServices(freshServices);
