@@ -35,6 +35,9 @@ export const query = async <T = any>(
 ): Promise<QueryResult<T>> => {
   let mysqlSql = text.replace(/\$(\d+)/g, '?');
   mysqlSql = mysqlSql.replace(/uuid_generate_v4\(\)/gi, 'UUID()');
+  mysqlSql = mysqlSql.replace(/INTERVAL\s+'(\d+)\s+([a-zA-Z]+)s?'/gi, (_match, num, unit) => {
+    return `INTERVAL ${num} ${unit.toUpperCase()}`;
+  });
 
   const returningMatch = mysqlSql.match(/\s+RETURNING\s+([^\s;,]+(?:\s*,\s*[^\s;,]+)*)/i);
   if (returningMatch) {

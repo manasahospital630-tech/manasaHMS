@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../config/database';
 import { CreateAppointmentInput } from './appointment.schema';
 import { AppError } from '../../middleware/errorHandler';
@@ -23,12 +24,14 @@ export const createAppointment = async (input: CreateAppointmentInput) => {
   const maxToken = tokenRes.rows[0]?.max_token;
   const tokenNo = maxToken ? parseInt(maxToken, 10) + 1 : 1;
 
-  const result = await query(
-    `INSERT INTO appointments (patient_id, doctor_id, appointment_date, symptoms_brief, notes, op_no, token_no)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [input.patientId, input.doctorId, input.appointmentDate, input.symptomsBrief || null, input.notes || null, opNo, tokenNo]
+  const apptId = uuidv4();
+  await query(
+    `INSERT INTO appointments (appointment_id, patient_id, doctor_id, appointment_date, reason, notes, op_no, token_no)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [apptId, input.patientId, input.doctorId, input.appointmentDate, input.symptomsBrief || null, input.notes || null, opNo, tokenNo]
   );
-  return result.rows[0];
+  const apptFetch = await query(`SELECT * FROM appointments WHERE appointment_id = $1`, [apptId]);
+  return apptFetch.rows[0];
 };
 
 export const getAppointments = async (filters: {
@@ -143,7 +146,7 @@ export const createOPCheckIn = async (input: { patientId: string; doctorId: stri
      WHERE patient_id = $1
        AND doctor_id = $2
        AND status IN ('CheckedIn', 'InConsultation', 'Completed')
-       AND appointment_date >= NOW() - INTERVAL '7 days'
+       AND appointment_date >= NOW() - INTERVAL 7 DAY
      ORDER BY appointment_date DESC
      LIMIT 1`,
     [patientId, doctorId]
@@ -172,33 +175,25 @@ export const createOPCheckIn = async (input: { patientId: string; doctorId: stri
     const tokenNo = maxToken ? parseInt(maxToken, 10) + 1 : 1;
 
     // 4. Create appointment with immutable op_no & token_no saved permanently in DB!
-    const apptRes = await query(
-      `INSERT INTO appointments (patient_id, doctor_id, appointment_date, status, symptoms_brief, notes, op_no, token_no)
-       VALUES ($1, $2, NOW(), 'CheckedIn', 'OPD Consultation Check-in', $3, $4, $5) RETURNING *`,
-      [patientId, doctorId, isFreeReview ? 'Free 7-day review consultation' : 'Paid consultation', opNo, tokenNo]
-    );
-    const appointment = apptRes.rows[0];
-
-    // 5. Create invoice
-    const invoiceRes = await query(
-      `INSERT INTO invoices (patient_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, status, payment_method, notes)
-       VALUES ($1, $2, 0.00, 0.00, 0.00, $2, $2, 'Paid', $3, $4) RETURNING *`,
-      [patientId, chargedFee, paymentMethod, `OPD Consultation Invoice for Dr. ${docInfo.first_name} ${docInfo.last_name}`]
-    );
-    const invoice = invoiceRes.rows[0];
-
-    // 6. Create invoice item
+    const apptId = uuidv4();
     await query(
-      `INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price)
-       VALUES ($1, $2, 'Consultation', 1, $3)`,
-      [
-        invoice.invoice_id,
-        `OPD Consultation - Dr. ${docInfo.first_name} ${docInfo.last_name} (${docInfo.department || 'General'})`,
-        chargedFee
-      ]
+      `INSERT INTO appointments (appointment_id, patient_id, doctor_id, appointment_date, status, reason, notes, op_no, token_no)
+       VALUES ($1, $2, $3, NOW(), 'CheckedIn', 'OPD Consultation Check-in', $4, $5, $6)`,
+      [apptId, patientId, doctorId, isFreeReview ? 'Free 7-day review consultation' : 'Paid consultation', opNo, tokenNo]
+    );
+    const apptFetch = await query(`SELECT * FROM appointments WHERE appointment_id = $1`, [apptId]);
+    const appointment = apptFetch.rows[0];
+
+    // 5. Create invoice in billing_invoices
+    const invoiceId = uuidv4();
+    const invoiceNum = `INV-${Date.now().toString().slice(-6)}`;
+    await query(
+      `INSERT INTO billing_invoices (invoice_id, invoice_number, patient_id, total_amount, paid_amount, balance_amount, status, payment_mode, notes)
+       VALUES ($1, $2, $3, $4, $5, 0.00, 'Paid', $6, $7)`,
+      [invoiceId, invoiceNum, patientId, chargedFee, chargedFee, paymentMethod, `OPD Consultation Invoice for Dr. ${docInfo.first_name} ${docInfo.last_name}`]
     );
 
-    const billNo = `OP${new Date().getFullYear().toString().substring(2)}${(new Date().getMonth() + 1).toString().padStart(2, '0')}-${invoice.invoice_id.substring(0, 4).toUpperCase()}`;
+    const billNo = `OP${new Date().getFullYear().toString().substring(2)}${(new Date().getMonth() + 1).toString().padStart(2, '0')}-${invoiceId.substring(0, 4).toUpperCase()}`;
 
     // Update appointment with bill_no
     await query(`UPDATE appointments SET bill_no = $1 WHERE appointment_id = $2`, [billNo, appointment.appointment_id]);
@@ -208,7 +203,7 @@ export const createOPCheckIn = async (input: { patientId: string; doctorId: stri
 
     return {
       appointment,
-      invoice,
+      invoice: { invoice_id: invoiceId, invoice_number: invoiceNum, total_amount: chargedFee, payment_mode: paymentMethod },
       isFreeReview,
       chargedFee,
       doctorName: `${docInfo.first_name} ${docInfo.last_name}`,
@@ -230,7 +225,7 @@ export const checkReviewStatus = async (patientId: string, doctorId: string) => 
      WHERE patient_id = $1
        AND doctor_id = $2
        AND status IN ('CheckedIn', 'InConsultation', 'Completed')
-       AND appointment_date >= NOW() - INTERVAL '7 days'
+       AND appointment_date >= NOW() - INTERVAL 7 DAY
      ORDER BY appointment_date DESC
      LIMIT 1`,
     [patientId, doctorId]

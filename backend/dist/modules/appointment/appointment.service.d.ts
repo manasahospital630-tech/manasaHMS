@@ -18,7 +18,12 @@ export declare const createOPCheckIn: (input: {
     paymentMethod: string;
 }) => Promise<{
     appointment: any;
-    invoice: any;
+    invoice: {
+        invoice_id: string;
+        invoice_number: string;
+        total_amount: number;
+        payment_mode: string;
+    };
     isFreeReview: boolean;
     chargedFee: number;
     doctorName: string;
