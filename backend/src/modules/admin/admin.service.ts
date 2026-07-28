@@ -11,7 +11,7 @@ export const getAllUsers = async (options: { search?: string; limit?: number; of
   const params: any[] = [];
   if (options.search) {
     params.push(`%${options.search}%`);
-    whereClause += ` AND (u.first_name ILIKE $1 OR u.last_name ILIKE $1 OR u.email ILIKE $1 OR u.employee_department ILIKE $1 OR dp.department ILIKE $1)`;
+    whereClause += ` AND (LOWER(u.first_name) LIKE LOWER($1) OR LOWER(u.last_name) LIKE LOWER($1) OR LOWER(u.email) LIKE LOWER($1) OR LOWER(u.employee_department) LIKE LOWER($1) OR LOWER(dp.department) LIKE LOWER($1))`;
   }
   const countResult = await query(`SELECT COUNT(*) as total FROM users u LEFT JOIN doctor_profiles dp ON u.user_id = dp.doctor_id ${whereClause}`, params);
   const dataParams = [...params];
@@ -164,7 +164,7 @@ export const getAuditLog = async (filters: { userId?: string; resourceType?: str
   if (filters.offset) { dataParams.push(filters.offset); limitClause += ` OFFSET $${dataParams.length}`; }
 
   const result = await query(
-    `SELECT al.*, u.first_name || ' ' || u.last_name as user_name, u.email as user_email
+    `SELECT al.*, CONCAT(u.first_name, ' ', u.last_name) as user_name, u.email as user_email
      FROM audit_log al LEFT JOIN users u ON al.user_id = u.user_id
      ${whereClause} ORDER BY al.created_at DESC ${limitClause}`, dataParams
   );
@@ -261,14 +261,14 @@ export const getDoctorProfiles = async () => {
   const result = await query(`
     SELECT
       u.user_id,
-      u.first_name || ' ' || u.last_name as doctor_name,
+      CONCAT(u.first_name, ' ', u.last_name) as doctor_name,
       u.email,
       u.phone,
       u.is_active,
       dp.department,
       COALESCE(dp.consultation_fee, 0.00) as consultation_fee,
-      (SELECT COUNT(*) FROM appointments a WHERE a.doctor_id = u.user_id AND a.status::text = 'Completed') as total_consultations,
-      (SELECT COUNT(DISTINCT a.patient_id) FROM appointments a WHERE a.doctor_id = u.user_id AND a.status::text = 'Completed') as total_patients
+      (SELECT COUNT(*) FROM appointments a WHERE a.doctor_id = u.user_id AND a.status = 'Completed') as total_consultations,
+      (SELECT COUNT(DISTINCT a.patient_id) FROM appointments a WHERE a.doctor_id = u.user_id AND a.status = 'Completed') as total_patients
     FROM users u
     LEFT JOIN doctor_profiles dp ON u.user_id = dp.doctor_id
     WHERE u.role = 'Doctor'
@@ -294,15 +294,18 @@ export const upsertDoctorProfile = async (input: { doctorId: string; department:
   if (user.rows.length === 0) throw new AppError('User not found.', 404);
   if (user.rows[0].role !== 'Doctor') throw new AppError('User is not a Doctor.', 400);
 
-  const result = await query(`
-    INSERT INTO doctor_profiles (doctor_id, department, consultation_fee, updated_at)
-    VALUES ($1, $2, $3, NOW())
-    ON CONFLICT (doctor_id) DO UPDATE
-    SET department = EXCLUDED.department,
-        consultation_fee = EXCLUDED.consultation_fee,
-        updated_at = NOW()
-    RETURNING *
+  await query(`
+    INSERT INTO doctor_profiles (doctor_id, department, consultation_fee)
+    VALUES ($1, $2, $3)
+    ON DUPLICATE KEY UPDATE
+      department = VALUES(department),
+      consultation_fee = VALUES(consultation_fee)
   `, [input.doctorId, input.department, input.consultationFee]);
+
+  const result = await query(`
+    SELECT doctor_id, department, consultation_fee, updated_at
+    FROM doctor_profiles WHERE doctor_id = $1
+  `, [input.doctorId]);
 
   return result.rows[0];
 };
@@ -519,12 +522,12 @@ export const getConsolidatedHospitalRevenue = async (options: {
       SELECT 
         COUNT(*) as count,
         COALESCE(SUM(i.total_amount), 0) as total_revenue,
-        COALESCE(SUM(i.amount_paid), 0) as paid_amount,
-        COALESCE(SUM(i.total_amount - i.amount_paid), 0) as pending_amount,
-        COUNT(CASE WHEN i.status::text = 'Paid' THEN 1 END) as paid_count,
-        COUNT(CASE WHEN i.status::text = 'Unpaid' THEN 1 END) as unpaid_count
-      FROM invoices i
-      WHERE i.status::text != 'Cancelled' AND (i.notes IS NULL OR i.notes NOT LIKE '%Direct pharmacy sale%') ${dateFilterInvoices}
+        COALESCE(SUM(i.paid_amount), 0) as paid_amount,
+        COALESCE(SUM(i.balance_amount), 0) as pending_amount,
+        COUNT(CASE WHEN i.status = 'Paid' THEN 1 END) as paid_count,
+        COUNT(CASE WHEN i.status = 'Pending' THEN 1 END) as unpaid_count
+      FROM billing_invoices i
+      WHERE i.status != 'Cancelled' AND (i.notes IS NULL OR i.notes NOT LIKE '%Direct pharmacy sale%') ${dateFilterInvoices}
     `, paramsInvoices);
 
     // 2. Pharmacy Sales & Medication Invoices
@@ -532,12 +535,12 @@ export const getConsolidatedHospitalRevenue = async (options: {
       SELECT 
         COUNT(*) as count,
         COALESCE(SUM(i.total_amount), 0) as total_revenue,
-        COALESCE(SUM(i.amount_paid), 0) as paid_amount,
-        COALESCE(SUM(i.total_amount - i.amount_paid), 0) as pending_amount,
-        COUNT(CASE WHEN i.status::text = 'Paid' THEN 1 END) as paid_count,
-        COUNT(CASE WHEN i.status::text = 'Unpaid' THEN 1 END) as unpaid_count
-      FROM invoices i
-      WHERE i.status::text != 'Cancelled' AND i.notes LIKE '%Direct pharmacy sale%' ${dateFilterInvoices}
+        COALESCE(SUM(i.paid_amount), 0) as paid_amount,
+        COALESCE(SUM(i.balance_amount), 0) as pending_amount,
+        COUNT(CASE WHEN i.status = 'Paid' THEN 1 END) as paid_count,
+        COUNT(CASE WHEN i.status = 'Pending' THEN 1 END) as unpaid_count
+      FROM billing_invoices i
+      WHERE i.status != 'Cancelled' AND i.notes LIKE '%Direct pharmacy sale%' ${dateFilterInvoices}
     `, paramsInvoices);
 
     // 3. OP Check-Ins & Consultations Revenue
@@ -545,10 +548,10 @@ export const getConsolidatedHospitalRevenue = async (options: {
       SELECT 
         COUNT(*) as count,
         COALESCE(SUM(COALESCE(dp.consultation_fee, 200.00)), 0) as total_revenue,
-        COUNT(CASE WHEN a.status::text = 'Completed' OR a.status::text = 'In-Consultation' OR a.status::text = 'In Consultation' THEN 1 END) as completed_count
+        COUNT(CASE WHEN a.status = 'Completed' OR a.status = 'In-Consultation' OR a.status = 'In Consultation' THEN 1 END) as completed_count
       FROM appointments a
       LEFT JOIN doctor_profiles dp ON a.doctor_id = dp.doctor_id
-      WHERE a.status::text != 'Cancelled' ${dateFilterAppts}
+      WHERE a.status != 'Cancelled' ${dateFilterAppts}
     `, paramsAppts);
 
     const bRow = billingRes.rows[0] || {};
