@@ -30,7 +30,6 @@ const navByRole: Record<string, NavItem[]> = {
       ]
     },
     { icon: ShieldAlert, label: 'Emergency Care', path: '/doctor/emergency' },
-    { icon: Stethoscope, label: 'Doctor Consultations', path: '/admin/consultations' },
     {
       icon: Beaker,
       label: 'Diagnostics',

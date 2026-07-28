@@ -306,6 +306,8 @@ const UserManagement: React.FC = () => {
                   <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '14px' }}>
                     {row.first_name} {row.last_name}
                   </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{row.email}</div>
+                  {row.phone && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>📱 {row.phone}</div>}
                   {row.license_number && (
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Reg: {row.license_number}</div>
                   )}
@@ -313,32 +315,24 @@ const UserManagement: React.FC = () => {
               ),
             },
             {
-              key: 'email',
-              label: 'Contact Info',
-              render: (_, row) => (
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: 500 }}>{row.email}</div>
-                  {row.phone && <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{row.phone}</div>}
-                </div>
-              ),
-            },
-            {
-              key: 'role',
-              label: 'System Role',
-              render: (v) => <RoleBadge role={v} />,
-            },
-            {
-              key: 'department',
-              label: 'Department & Specialization',
+              key: 'role_department',
+              label: 'System Role / Department & Specialization',
               render: (_, row) => {
                 const dept = row.department || row.employee_department || '—';
                 const spec = row.employee_specialization;
                 return (
-                  <div>
-                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13px' }}>
-                      {dept}
-                    </span>
-                    {spec && <div style={{ fontSize: '11px', color: 'var(--accent-primary)', fontWeight: 500 }}>{spec}</div>}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div>
+                      <RoleBadge role={row.role} />
+                    </div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      🏢 {dept}
+                    </div>
+                    {spec && (
+                      <div style={{ fontSize: '11px', color: 'var(--accent-primary)', fontWeight: 600 }}>
+                        🩺 {spec}
+                      </div>
+                    )}
                   </div>
                 );
               },
@@ -346,7 +340,11 @@ const UserManagement: React.FC = () => {
             {
               key: 'consultation_fee',
               label: 'Consulting Fee',
-              render: (v, row) => (row.role === 'Doctor' ? formatCurrency(v || 0) : '—'),
+              render: (v, row) => (row.role === 'Doctor' ? (
+                <span style={{ fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                  {formatCurrency(v || 0)}
+                </span>
+              ) : '—'),
             },
             {
               key: 'is_active',
@@ -367,7 +365,7 @@ const UserManagement: React.FC = () => {
                     variant="primary"
                     icon={<Eye size={14} />}
                     onClick={() => navigate(`/staff/profile/${row.user_id}`)}
-                    title="View role-based staff or doctor profile"
+                    title="View role-based staff profile & delete account"
                     style={{ background: '#0d9488', borderColor: '#0d9488' }}
                   >
                     View Profile
@@ -388,24 +386,12 @@ const UserManagement: React.FC = () => {
                   >
                     {row.is_active ? 'Deactivate' : 'Activate'}
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    icon={<Trash2 size={14} />}
-                    onClick={() => {
-                      setDeletingUser(row);
-                      setDeleteModalOpen(true);
-                    }}
-                    title="Delete staff member account"
-                    style={{ background: '#ef4444', borderColor: '#dc2626' }}
-                  >
-                    Delete
-                  </Button>
                 </div>
               ),
             },
           ]}
           data={filteredUsers}
+          emptyMessage="No staff members or users found."
         />
       </div>
 

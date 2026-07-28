@@ -4,10 +4,12 @@ import {
   User, Calendar, FileText, Activity, Clock, ShieldCheck, Stethoscope,
   Building2, Phone, Mail, CheckCircle, AlertCircle, ArrowLeft, RefreshCw,
   TrendingUp, CreditCard, ChevronRight, DollarSign, Award, FileSpreadsheet,
-  Plus, Edit, Eye, Filter
+  Plus, Edit, Eye, Filter, Trash2
 } from 'lucide-react';
 import api from '../../api/client';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { Modal } from '../../components/ui/Modal';
+import { Button } from '../../components/ui/Button';
 
 export const StaffProfilePage: React.FC = () => {
   const { userId } = useParams<{ userId: string }>();
@@ -17,6 +19,11 @@ export const StaffProfilePage: React.FC = () => {
   const [data, setData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'appointments' | 'op' | 'notes' | 'activity'>('overview');
   const [opFilter, setOpFilter] = useState('all');
+
+  // Delete Staff Modal State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const fetchProfileData = async () => {
     if (!userId) return;
@@ -36,6 +43,20 @@ export const StaffProfilePage: React.FC = () => {
   useEffect(() => {
     fetchProfileData();
   }, [userId]);
+
+  const handleConfirmDelete = async () => {
+    if (!userId) return;
+    setDeleteLoading(true);
+    setDeleteError('');
+    try {
+      await api.delete(`/admin/users/${userId}`);
+      navigate('/admin/users');
+    } catch (err: any) {
+      setDeleteError(err.response?.data?.error || 'Failed to delete staff member account.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -166,11 +187,34 @@ export const StaffProfilePage: React.FC = () => {
               <strong>Specialization:</strong> {staffUser.employee_specialization || (isDoctor ? 'General Practice' : `${staffUser.role} Operations`)}
             </div>
 
-            <div style={{ marginTop: '12px' }}>
+            <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
               <span style={{ background: '#dcfce7', color: '#166534', fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#166534' }} />
                 Active
               </span>
+            </div>
+
+            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
+              <button
+                onClick={() => setDeleteModalOpen(true)}
+                style={{
+                  width: '100%',
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#dc2626',
+                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Trash2 size={14} /> Delete Staff Account
+              </button>
             </div>
           </div>
 
@@ -590,6 +634,43 @@ export const StaffProfilePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Staff Account Confirmation Modal */}
+      <Modal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title="Confirm Staff Account Deletion"
+      >
+        <div style={{ display: 'grid', gap: '16px' }}>
+          {deleteError && (
+            <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', fontSize: '13px' }}>
+              ⚠️ {deleteError}
+            </div>
+          )}
+
+          <div style={{ padding: '14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', fontSize: '14px' }}>
+            ⚠️ <strong>Warning:</strong> You are about to permanently delete staff profile <strong>{staffUser.first_name} {staffUser.last_name}</strong> ({staffUser.email} - {staffUser.role}). This action will revoke all system access immediately.
+          </div>
+
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
+            Are you sure you want to proceed with deleting this user profile?
+          </p>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+            <Button variant="secondary" onClick={() => setDeleteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="danger" 
+              onClick={handleConfirmDelete} 
+              loading={deleteLoading}
+              style={{ background: '#ef4444', borderColor: '#dc2626' }}
+            >
+              Confirm Delete Staff Account
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
     </div>
   );
