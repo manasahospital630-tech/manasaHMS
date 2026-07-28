@@ -8,7 +8,7 @@ export const getInventory = async (options: { search?: string; lowStock?: boolea
 
   if (options.search) {
     params.push(`%${options.search}%`);
-    whereClause += ` AND (item_name ILIKE $${params.length} OR sku ILIKE $${params.length} OR category ILIKE $${params.length})`;
+    whereClause += ` AND (LOWER(item_name) LIKE LOWER($${params.length}) OR LOWER(sku) LIKE LOWER($${params.length}) OR LOWER(category) LIKE LOWER($${params.length}))`;
   }
   if (options.lowStock) {
     whereClause += ` AND stock_quantity <= reorder_level`;

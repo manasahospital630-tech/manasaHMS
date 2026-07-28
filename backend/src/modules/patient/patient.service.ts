@@ -61,36 +61,23 @@ export const getPatients = async (options: {
   const { search, limit = 25, offset = 0 } = options;
   let whereClause = '';
   let orderByClause = 'ORDER BY p.created_at DESC';
-  const params: any[] = [];
+  const dataParams: any[] = [];
+  const countParams: any[] = [];
 
   if (search && search.trim()) {
-    const term = search.trim();
-    params.push(`%${term}%`); // $1
-    params.push(`${term}%`);  // $2
-    params.push(term);       // $3
-    
-    whereClause = `WHERE p.phone ILIKE $1 
-       OR REGEXP_REPLACE(COALESCE(p.phone, ''), '[^0-9]', '', 'g') ILIKE $1
-       OR p.first_name || ' ' || p.last_name ILIKE $1 
-       OR p.first_name ILIKE $1 
-       OR p.last_name ILIKE $1 
-       OR p.medical_record_number ILIKE $1`;
+    const term = `%${search.trim()}%`;
+    dataParams.push(term, term, term, term, term); // $1..$5
+    countParams.push(term, term, term, term, term);
 
-    orderByClause = `ORDER BY 
-      CASE 
-        WHEN p.phone = $3 THEN 1
-        WHEN p.phone ILIKE $2 THEN 2
-        WHEN REGEXP_REPLACE(COALESCE(p.phone, ''), '[^0-9]', '', 'g') ILIKE $2 THEN 3
-        WHEN p.medical_record_number ILIKE $3 THEN 4
-        WHEN p.first_name || ' ' || p.last_name ILIKE $2 THEN 5
-        ELSE 6
-      END,
-      p.created_at DESC`;
+    whereClause = `WHERE LOWER(COALESCE(p.phone, '')) LIKE LOWER($1) 
+       OR LOWER(p.first_name) LIKE LOWER($2) 
+       OR LOWER(p.last_name) LIKE LOWER($3) 
+       OR LOWER(CONCAT(p.first_name, ' ', p.last_name)) LIKE LOWER($4)
+       OR LOWER(COALESCE(p.mrn, '')) LIKE LOWER($5)`;
   }
 
-  const countParams = params.length > 0 ? [params[0]] : [];
-  const countWhere = params.length > 0 
-    ? `WHERE p.phone ILIKE $1 OR REGEXP_REPLACE(COALESCE(p.phone, ''), '[^0-9]', '', 'g') ILIKE $1 OR p.first_name || ' ' || p.last_name ILIKE $1 OR p.first_name ILIKE $1 OR p.last_name ILIKE $1 OR p.medical_record_number ILIKE $1`
+  const countWhere = search && search.trim() 
+    ? `WHERE LOWER(COALESCE(p.phone, '')) LIKE LOWER($1) OR LOWER(p.first_name) LIKE LOWER($2) OR LOWER(p.last_name) LIKE LOWER($3) OR LOWER(CONCAT(p.first_name, ' ', p.last_name)) LIKE LOWER($4) OR LOWER(COALESCE(p.mrn, '')) LIKE LOWER($5)`
     : '';
 
   const countResult = await query(
@@ -98,24 +85,29 @@ export const getPatients = async (options: {
     countParams
   );
 
-  const total = parseInt(countResult.rows[0].total, 10);
+  const total = parseInt(countResult.rows[0]?.total || '0', 10);
 
-  const dataParams = [...params, limit, offset];
-  const limitParamIdx = params.length + 1;
-  const offsetParamIdx = params.length + 2;
+  dataParams.push(limit, offset);
+  const limitParamIdx = dataParams.length - 1;
+  const offsetParamIdx = dataParams.length;
 
   const result = await query(
-    `SELECT p.*, d.first_name as doctor_first_name, d.last_name as doctor_last_name
+    `SELECT p.*, p.mrn as medical_record_number, d.first_name as doctor_first_name, d.last_name as doctor_last_name
      FROM patients p
-     LEFT JOIN users d ON p.assigned_doctor_id = d.user_id
+     LEFT JOIN users d ON p.patient_id = d.user_id
      ${whereClause}
      ${orderByClause}
      LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}`,
     dataParams
   );
 
+  const formattedPatients = result.rows.map(r => ({
+    ...r,
+    medical_record_number: r.mrn || r.medical_record_number || 'MRN-000000'
+  }));
+
   return {
-    patients: result.rows,
+    patients: formattedPatients,
     pagination: {
       total,
       limit,

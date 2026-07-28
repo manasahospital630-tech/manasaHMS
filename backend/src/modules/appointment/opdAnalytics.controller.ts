@@ -304,12 +304,10 @@ export const getFilteredOpdRecords = async (req: Request, res: Response) => {
       params.push(q);
       const pIdx = params.length;
       whereClause += ` AND (
-        p.first_name || ' ' || p.last_name ILIKE $${pIdx} OR 
-        p.medical_record_number ILIKE $${pIdx} OR 
-        p.phone ILIKE $${pIdx} OR 
-        u.first_name || ' ' || u.last_name ILIKE $${pIdx} OR 
-        CAST(a.op_no AS TEXT) ILIKE $${pIdx} OR 
-        CAST(a.token_no AS TEXT) ILIKE $${pIdx}
+        LOWER(CONCAT(p.first_name, ' ', p.last_name)) LIKE LOWER($${pIdx}) OR 
+        LOWER(COALESCE(p.mrn, '')) LIKE LOWER($${pIdx}) OR 
+        LOWER(COALESCE(p.phone, '')) LIKE LOWER($${pIdx}) OR 
+        LOWER(CONCAT(u.first_name, ' ', u.last_name)) LIKE LOWER($${pIdx})
       )`;
     }
 
