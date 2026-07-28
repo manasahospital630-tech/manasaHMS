@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getConsolidatedHospitalRevenue = exports.getDashboardStats = exports.updateHospitalSettings = exports.getHospitalSettings = exports.upsertDoctorProfile = exports.getDoctorProfiles = exports.getStaffProfile = exports.getAuditLog = exports.updateUser = exports.createUser = exports.getAllUsers = void 0;
+exports.deleteUser = exports.getConsolidatedHospitalRevenue = exports.getDashboardStats = exports.updateHospitalSettings = exports.getHospitalSettings = exports.upsertDoctorProfile = exports.getDoctorProfiles = exports.getStaffProfile = exports.getAuditLog = exports.updateUser = exports.createUser = exports.getAllUsers = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const database_1 = require("../../config/database");
 const errorHandler_1 = require("../../middleware/errorHandler");
@@ -601,4 +601,25 @@ const getConsolidatedHospitalRevenue = async (options) => {
     };
 };
 exports.getConsolidatedHospitalRevenue = getConsolidatedHospitalRevenue;
+const deleteUser = async (userId) => {
+    const userCheck = await (0, database_1.query)('SELECT user_id, email, role FROM users WHERE user_id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+        throw new errorHandler_1.AppError('User not found.', 404);
+    }
+    const user = userCheck.rows[0];
+    if (user.email === 'admin@hannahhms.com' || user.email === 'info@manasahospital.co.in') {
+        throw new errorHandler_1.AppError('Primary System Super Admin account cannot be deleted.', 403);
+    }
+    // Delete user dependencies & user record
+    await (0, database_1.query)('DELETE FROM user_roles WHERE user_id = $1', [userId]);
+    await (0, database_1.query)('DELETE FROM doctor_profiles WHERE doctor_id = $1', [userId]);
+    try {
+        await (0, database_1.query)('DELETE FROM users WHERE user_id = $1', [userId]);
+    }
+    catch (err) {
+        await (0, database_1.query)('UPDATE users SET is_active = FALSE WHERE user_id = $1', [userId]);
+    }
+    return { success: true, message: 'User deleted successfully.' };
+};
+exports.deleteUser = deleteUser;
 //# sourceMappingURL=admin.service.js.map

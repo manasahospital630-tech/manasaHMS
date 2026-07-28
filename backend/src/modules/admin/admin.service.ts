@@ -673,4 +673,28 @@ export const getConsolidatedHospitalRevenue = async (options: {
   };
 };
 
+export const deleteUser = async (userId: string) => {
+  const userCheck = await query('SELECT user_id, email, role FROM users WHERE user_id = $1', [userId]);
+  if (userCheck.rows.length === 0) {
+    throw new AppError('User not found.', 404);
+  }
+
+  const user = userCheck.rows[0];
+  if (user.email === 'admin@hannahhms.com' || user.email === 'info@manasahospital.co.in') {
+    throw new AppError('Primary System Super Admin account cannot be deleted.', 403);
+  }
+
+  // Delete user dependencies & user record
+  await query('DELETE FROM user_roles WHERE user_id = $1', [userId]);
+  await query('DELETE FROM doctor_profiles WHERE doctor_id = $1', [userId]);
+  
+  try {
+    await query('DELETE FROM users WHERE user_id = $1', [userId]);
+  } catch (err: any) {
+    await query('UPDATE users SET is_active = FALSE WHERE user_id = $1', [userId]);
+  }
+
+  return { success: true, message: 'User deleted successfully.' };
+};
+
 

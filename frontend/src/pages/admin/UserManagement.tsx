@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Plus, Edit, Search, CheckCircle, AlertCircle, Building2, Lock, ShieldCheck, Stethoscope, Eye } from 'lucide-react';
+import { Users, Plus, Edit, Search, CheckCircle, AlertCircle, Building2, Lock, ShieldCheck, Stethoscope, Eye, Trash2 } from 'lucide-react';
 import { Table } from '../../components/ui/Table';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -56,6 +56,28 @@ const UserManagement: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [customDept, setCustomDept] = useState('');
+
+  // Delete Confirm Modal State
+  const [deletingUser, setDeletingUser] = useState<any | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!deletingUser) return;
+    setDeleteLoading(true);
+    setError('');
+    try {
+      await api.delete(`/admin/users/${deletingUser.user_id}`);
+      setSuccess(`Staff member "${deletingUser.first_name} ${deletingUser.last_name}" deleted successfully.`);
+      setDeleteModalOpen(false);
+      setDeletingUser(null);
+      fetchData();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to delete user.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const [form, setForm] = useState({
     firstName: '',
@@ -361,10 +383,23 @@ const UserManagement: React.FC = () => {
                   </Button>
                   <Button
                     size="sm"
-                    variant={row.is_active ? 'danger' : 'success'}
+                    variant={row.is_active ? 'secondary' : 'success'}
                     onClick={() => toggleActive(row)}
                   >
                     {row.is_active ? 'Deactivate' : 'Activate'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    icon={<Trash2 size={14} />}
+                    onClick={() => {
+                      setDeletingUser(row);
+                      setDeleteModalOpen(true);
+                    }}
+                    title="Delete staff member account"
+                    style={{ background: '#ef4444', borderColor: '#dc2626' }}
+                  >
+                    Delete
                   </Button>
                 </div>
               ),
@@ -543,6 +578,37 @@ const UserManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Delete User Confirmation Modal */}
+      <Modal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title="Confirm User Account Deletion"
+      >
+        <div style={{ display: 'grid', gap: '16px' }}>
+          <div style={{ padding: '14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', fontSize: '14px' }}>
+            ⚠️ <strong>Warning:</strong> You are about to delete staff user <strong>{deletingUser?.first_name} {deletingUser?.last_name}</strong> ({deletingUser?.email} - {deletingUser?.role}). This action will revoke their login access immediately.
+          </div>
+
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
+            Are you sure you want to delete this staff member? If they have linked medical records or appointments, their account status will be deactivated safely.
+          </p>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+            <Button variant="secondary" onClick={() => setDeleteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="danger" 
+              onClick={handleConfirmDelete} 
+              loading={deleteLoading}
+              style={{ background: '#ef4444', borderColor: '#dc2626' }}
+            >
+              Confirm Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

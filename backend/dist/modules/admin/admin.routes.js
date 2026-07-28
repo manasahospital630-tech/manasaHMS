@@ -68,6 +68,7 @@ router.get('/users/:id/profile', authenticate_1.authenticateJWT, ctrl.getStaffPr
 router.get('/staff/profile/:id', authenticate_1.authenticateJWT, ctrl.getStaffProfile);
 router.post('/users', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Admin']), (0, validator_1.validate)(admin_schema_1.createUserSchema), (0, auditLogger_1.auditLogger)('CREATE', 'User'), ctrl.createUser);
 router.patch('/users/:id', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Admin']), (0, validator_1.validate)(admin_schema_1.updateUserSchema), (0, auditLogger_1.auditLogger)('UPDATE', 'User'), ctrl.updateUser);
+router.delete('/users/:id', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Admin']), (0, auditLogger_1.auditLogger)('DELETE', 'User'), ctrl.deleteUser);
 router.get('/audit-log', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Admin']), ctrl.getAuditLog);
 router.get('/dashboard-stats', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Admin', 'Management']), ctrl.getDashboardStats);
 router.get('/consolidated-revenue', authenticate_1.authenticateJWT, ctrl.getConsolidatedHospitalRevenue);

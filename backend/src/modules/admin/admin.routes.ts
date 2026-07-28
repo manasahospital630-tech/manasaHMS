@@ -39,6 +39,7 @@ router.get('/users/:id/profile', authenticateJWT, ctrl.getStaffProfile);
 router.get('/staff/profile/:id', authenticateJWT, ctrl.getStaffProfile);
 router.post('/users', authenticateJWT, enforceRBAC(['Admin']), validate(createUserSchema), auditLogger('CREATE', 'User'), ctrl.createUser);
 router.patch('/users/:id', authenticateJWT, enforceRBAC(['Admin']), validate(updateUserSchema), auditLogger('UPDATE', 'User'), ctrl.updateUser);
+router.delete('/users/:id', authenticateJWT, enforceRBAC(['Admin']), auditLogger('DELETE', 'User'), ctrl.deleteUser);
 router.get('/audit-log', authenticateJWT, enforceRBAC(['Admin']), ctrl.getAuditLog);
 router.get('/dashboard-stats', authenticateJWT, enforceRBAC(['Admin', 'Management']), ctrl.getDashboardStats);
 router.get('/consolidated-revenue', authenticateJWT, ctrl.getConsolidatedHospitalRevenue);

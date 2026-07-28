@@ -35,6 +35,13 @@ export const updateUser = async (req: ProtectedRequest, res: Response, next: Nex
   } catch (error) { next(error); }
 };
 
+export const deleteUser = async (req: ProtectedRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const result = await adminService.deleteUser(req.params.id as string);
+    successResponse(res, result, 'User deleted successfully.');
+  } catch (error) { next(error); }
+};
+
 export const getAuditLog = async (req: ProtectedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const logs = await adminService.getAuditLog({

@@ -405,4 +405,8 @@ export declare const getConsolidatedHospitalRevenue: (options: {
         };
     };
 }>;
+export declare const deleteUser: (userId: string) => Promise<{
+    success: boolean;
+    message: string;
+}>;
 //# sourceMappingURL=admin.service.d.ts.map
