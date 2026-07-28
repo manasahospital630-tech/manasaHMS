@@ -1,6 +1,6 @@
 /**
  * Generate a Medical Record Number in the format MRN-YYYY-XXXXX
- * Uses PostgreSQL mrn_seq sequence for unique, sequential numbers
+ * Compatible with Hostinger MySQL / MariaDB (column `mrn`)
  */
 export declare const generateMRN: () => Promise<string>;
 //# sourceMappingURL=mrnGenerator.d.ts.map

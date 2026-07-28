@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 import { query } from '../../config/database';
 import { generateMRN } from '../../utils/mrnGenerator';
 import { CreatePatientInput, UpdatePatientInput } from './patient.schema';
@@ -6,6 +7,7 @@ import { AppError } from '../../middleware/errorHandler';
 
 export const createPatient = async (input: CreatePatientInput) => {
   const mrn = await generateMRN();
+  const patientId = uuidv4();
 
   let ageVal: number | null = null;
   if (input.age !== undefined && input.age !== null && input.age !== '') {
@@ -21,36 +23,33 @@ export const createPatient = async (input: CreatePatientInput) => {
     dob = '1990-01-01';
   }
 
-  const result = await query(
+  await query(
     `INSERT INTO patients (
-      user_id, medical_record_number, first_name, last_name, date_of_birth, age, gender,
-      blood_group, address, phone, email, emergency_contact_name, emergency_contact_phone,
-      insurance_provider, insurance_policy_number, allergies, assigned_doctor_id, referred_by
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-    RETURNING *`,
+      patient_id, mrn, first_name, last_name, gender, date_of_birth,
+      blood_group, phone, email, address, emergency_contact_name, emergency_contact_phone
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [
-      input.userId || null,
+      patientId,
       mrn,
       input.firstName,
       input.lastName,
-      dob,
-      ageVal,
       input.gender,
+      dob,
       input.bloodGroup || null,
-      input.address || null,
       input.phone || null,
       input.email || null,
+      input.address || null,
       input.emergencyContactName || null,
       input.emergencyContactPhone || null,
-      input.insuranceProvider || null,
-      input.insurancePolicyNumber || null,
-      input.allergies || null,
-      input.assignedDoctorId || null,
-      input.referredBy || null,
     ]
   );
 
-  return result.rows[0];
+  const created = await query(`SELECT * FROM patients WHERE patient_id = $1`, [patientId]);
+  const row = created.rows[0];
+  return {
+    ...row,
+    medical_record_number: row.mrn
+  };
 };
 
 export const getPatients = async (options: {

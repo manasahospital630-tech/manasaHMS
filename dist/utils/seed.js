@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const database_1 = require("../config/database");
+const mrnGenerator_1 = require("./mrnGenerator");
 const SALT_ROUNDS = 12;
 const seedUsers = [
     { email: 'admin@hannahhms.com', firstName: 'System', lastName: 'Admin', role: 'Admin' },
@@ -96,9 +97,7 @@ async function seed() {
             const existing = await (0, database_1.query)('SELECT patient_id FROM patients WHERE phone = $1 OR email = $2', [pat.phone, pat.email]);
             const assignedDoctorId = doctors.length > 0 ? doctors[i % doctors.length].user_id : null;
             if (existing.rows.length === 0) {
-                const mrnVal = await (0, database_1.query)("SELECT nextval('mrn_seq') as seq");
-                const seqNum = mrnVal.rows[0].seq;
-                const mrn = `MRN-2026-${seqNum}`;
+                const mrn = await (0, mrnGenerator_1.generateMRN)();
                 await (0, database_1.query)(`INSERT INTO patients (medical_record_number, first_name, last_name, date_of_birth, gender, blood_group, phone, email, address, allergies, assigned_doctor_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [mrn, pat.firstName, pat.lastName, pat.dob, pat.gender, pat.bloodGroup, pat.phone, pat.email, pat.address, pat.allergies, assignedDoctorId]);
                 console.log(`✅ Created patient: ${pat.firstName} ${pat.lastName} (${mrn})`);

@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { query } from '../config/database';
+import { generateMRN } from './mrnGenerator';
 
 const SALT_ROUNDS = 12;
 
@@ -106,9 +107,7 @@ async function seed() {
       const assignedDoctorId = doctors.length > 0 ? doctors[i % doctors.length].user_id : null;
 
       if (existing.rows.length === 0) {
-        const mrnVal = await query("SELECT nextval('mrn_seq') as seq");
-        const seqNum = mrnVal.rows[0].seq;
-        const mrn = `MRN-2026-${seqNum}`;
+        const mrn = await generateMRN();
 
         await query(
           `INSERT INTO patients (medical_record_number, first_name, last_name, date_of_birth, gender, blood_group, phone, email, address, allergies, assigned_doctor_id)
