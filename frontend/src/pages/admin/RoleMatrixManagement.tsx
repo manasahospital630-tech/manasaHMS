@@ -115,13 +115,13 @@ export const RoleMatrixManagement: React.FC = () => {
           module_key: m.module_key,
           module_name: m.module_name,
           category: m.category,
-          can_view: found ? found.can_view : false,
-          can_create: found ? found.can_create : false,
-          can_edit: found ? found.can_edit : false,
-          can_delete: found ? found.can_delete : false,
-          can_append: found ? found.can_append : false,
-          can_append_to: found ? found.can_append_to : false,
-          is_hidden: found ? (found.is_hidden || false) : false,
+          can_view: found ? Boolean(found.can_view) : false,
+          can_create: found ? Boolean(found.can_create) : false,
+          can_edit: found ? Boolean(found.can_edit) : false,
+          can_delete: found ? Boolean(found.can_delete) : false,
+          can_append: found ? Boolean(found.can_append) : false,
+          can_append_to: found ? Boolean(found.can_append_to) : false,
+          is_hidden: found ? Boolean(found.is_hidden) : false,
           custom_permissions: found?.custom_permissions || {
             view_timeline: false,
             approve_bills: false,
@@ -156,7 +156,8 @@ export const RoleMatrixManagement: React.FC = () => {
   const handleTogglePermission = (moduleId: string, field: keyof PermissionItem) => {
     setPermissionMatrix(prev => prev.map(item => {
       if (item.module_id === moduleId) {
-        const newVal = !item[field];
+        const currentVal = Boolean(item[field]);
+        const newVal = !currentVal;
         // When toggling is_hidden ON: clear all other permissions
         if (field === 'is_hidden' && newVal === true) {
           return {
@@ -173,7 +174,7 @@ export const RoleMatrixManagement: React.FC = () => {
         }
         // When toggling a CRUD perm ON: auto-clear is_hidden
         if (field !== 'is_hidden' && newVal === true && item.is_hidden) {
-          return { ...item, [field]: newVal, is_hidden: false };
+          return { ...item, [field]: true, is_hidden: false };
         }
         return { ...item, [field]: newVal };
       }
