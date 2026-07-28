@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import { query } from '../../config/database';
-import { AppError } from '../../middleware/errorHandler';
 
 /**
  * Helper to build doctor & payment WHERE SQL clauses
@@ -27,6 +26,17 @@ const buildWhereFilters = (doctorId?: string, paymentMethod?: string, status?: s
   return { where, params };
 };
 
+const INVOICE_SUBQUERY_JOIN = `
+  LEFT JOIN billing_invoices i ON i.invoice_id = (
+    SELECT bi.invoice_id 
+    FROM billing_invoices bi 
+    WHERE bi.patient_id = a.patient_id 
+      AND (a.bill_no LIKE CONCAT('%', UPPER(SUBSTRING(bi.invoice_id, 1, 4)), '%') OR DATE(bi.created_at) = DATE(a.appointment_date))
+    ORDER BY (a.bill_no LIKE CONCAT('%', UPPER(SUBSTRING(bi.invoice_id, 1, 4)), '%')) DESC, bi.created_at DESC
+    LIMIT 1
+  )
+`;
+
 /**
  * 1. KPI Summary Endpoint
  * Returns Today, Week, Month, Year OPD count & revenue
@@ -49,7 +59,7 @@ export const getOpdKpiSummary = async (req: Request, res: Response) => {
     const baseSql = `
       FROM appointments a
       LEFT JOIN doctor_profiles dp ON a.doctor_id = dp.doctor_id
-      LEFT JOIN billing_invoices i ON i.patient_id = a.patient_id AND DATE(i.created_at) = DATE(a.appointment_date)
+      ${INVOICE_SUBQUERY_JOIN}
       WHERE a.status != 'Cancelled' ${docClause}
     `;
 
@@ -103,11 +113,9 @@ export const getOpdKpiSummary = async (req: Request, res: Response) => {
  */
 export const getOpdGrowthChart = async (req: Request, res: Response) => {
   try {
-    const { doctorId, dateRange = 'This Week', startDate, endDate } = req.query as {
+    const { doctorId, dateRange = 'This Week' } = req.query as {
       doctorId?: string;
       dateRange?: string;
-      startDate?: string;
-      endDate?: string;
     };
 
     const docParams: any[] = [];
@@ -337,11 +345,11 @@ export const getOpdMasterRecords = async (req: Request, res: Response) => {
     }
 
     const countSql = `
-      SELECT COUNT(*) as total
+      SELECT COUNT(DISTINCT a.appointment_id) as total
       FROM appointments a
       LEFT JOIN patients p ON a.patient_id = p.patient_id
       LEFT JOIN users u ON a.doctor_id = u.user_id
-      LEFT JOIN billing_invoices i ON i.patient_id = a.patient_id AND DATE(i.created_at) = DATE(a.appointment_date)
+      ${INVOICE_SUBQUERY_JOIN}
       ${whereClause}
     `;
     const countRes = await query(countSql, params);
@@ -366,7 +374,7 @@ export const getOpdMasterRecords = async (req: Request, res: Response) => {
       LEFT JOIN patients p ON a.patient_id = p.patient_id
       LEFT JOIN users u ON a.doctor_id = u.user_id
       LEFT JOIN doctor_profiles dp ON a.doctor_id = dp.doctor_id
-      LEFT JOIN billing_invoices i ON i.patient_id = a.patient_id AND DATE(i.created_at) = DATE(a.appointment_date)
+      ${INVOICE_SUBQUERY_JOIN}
       ${whereClause}
       ORDER BY a.appointment_date DESC, a.created_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}

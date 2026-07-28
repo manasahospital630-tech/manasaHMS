@@ -22,6 +22,16 @@ const buildWhereFilters = (doctorId, paymentMethod, status) => {
     }
     return { where, params };
 };
+const INVOICE_SUBQUERY_JOIN = `
+  LEFT JOIN billing_invoices i ON i.invoice_id = (
+    SELECT bi.invoice_id 
+    FROM billing_invoices bi 
+    WHERE bi.patient_id = a.patient_id 
+      AND (a.bill_no LIKE CONCAT('%', UPPER(SUBSTRING(bi.invoice_id, 1, 4)), '%') OR DATE(bi.created_at) = DATE(a.appointment_date))
+    ORDER BY (a.bill_no LIKE CONCAT('%', UPPER(SUBSTRING(bi.invoice_id, 1, 4)), '%')) DESC, bi.created_at DESC
+    LIMIT 1
+  )
+`;
 /**
  * 1. KPI Summary Endpoint
  * Returns Today, Week, Month, Year OPD count & revenue
@@ -42,7 +52,7 @@ const getOpdKpiSummary = async (req, res) => {
         const baseSql = `
       FROM appointments a
       LEFT JOIN doctor_profiles dp ON a.doctor_id = dp.doctor_id
-      LEFT JOIN billing_invoices i ON i.patient_id = a.patient_id AND DATE(i.created_at) = DATE(a.appointment_date)
+      ${INVOICE_SUBQUERY_JOIN}
       WHERE a.status != 'Cancelled' ${docClause}
     `;
         const summaryQuery = `
@@ -94,7 +104,7 @@ exports.getOpdKpiSummary = getOpdKpiSummary;
  */
 const getOpdGrowthChart = async (req, res) => {
     try {
-        const { doctorId, dateRange = 'This Week', startDate, endDate } = req.query;
+        const { doctorId, dateRange = 'This Week' } = req.query;
         const docParams = [];
         let docClause = "";
         if (doctorId && doctorId !== 'ALL') {
@@ -306,11 +316,11 @@ const getOpdMasterRecords = async (req, res) => {
             whereClause += ` AND DATE(a.appointment_date) <= $${params.length}`;
         }
         const countSql = `
-      SELECT COUNT(*) as total
+      SELECT COUNT(DISTINCT a.appointment_id) as total
       FROM appointments a
       LEFT JOIN patients p ON a.patient_id = p.patient_id
       LEFT JOIN users u ON a.doctor_id = u.user_id
-      LEFT JOIN billing_invoices i ON i.patient_id = a.patient_id AND DATE(i.created_at) = DATE(a.appointment_date)
+      ${INVOICE_SUBQUERY_JOIN}
       ${whereClause}
     `;
         const countRes = await (0, database_1.query)(countSql, params);
@@ -334,7 +344,7 @@ const getOpdMasterRecords = async (req, res) => {
       LEFT JOIN patients p ON a.patient_id = p.patient_id
       LEFT JOIN users u ON a.doctor_id = u.user_id
       LEFT JOIN doctor_profiles dp ON a.doctor_id = dp.doctor_id
-      LEFT JOIN billing_invoices i ON i.patient_id = a.patient_id AND DATE(i.created_at) = DATE(a.appointment_date)
+      ${INVOICE_SUBQUERY_JOIN}
       ${whereClause}
       ORDER BY a.appointment_date DESC, a.created_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
