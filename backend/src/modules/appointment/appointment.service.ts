@@ -70,13 +70,13 @@ export const getAppointments = async (filters: {
 
   const result = await query(
     `SELECT a.*,
-            p.first_name || ' ' || p.last_name as patient_name,
-            p.medical_record_number,
+            CONCAT(p.first_name, ' ', p.last_name) as patient_name,
+            p.mrn as medical_record_number,
+            p.mrn,
             p.phone as patient_phone,
             p.date_of_birth,
             p.gender,
-            p.age,
-            u.first_name || ' ' || u.last_name as doctor_name,
+            CONCAT(u.first_name, ' ', u.last_name) as doctor_name,
             dp.department as doctor_department,
             COALESCE(dp.consultation_fee, 0.00) as doctor_fee
      FROM appointments a
@@ -91,16 +91,17 @@ export const getAppointments = async (filters: {
 
   return {
     appointments: result.rows,
-    total: parseInt(countResult.rows[0].total, 10),
+    total: parseInt(countResult.rows[0]?.total || '0', 10),
   };
 };
 
 export const getAppointmentById = async (id: string) => {
   const result = await query(
     `SELECT a.*,
-            p.first_name || ' ' || p.last_name as patient_name,
-            p.medical_record_number,
-            u.first_name || ' ' || u.last_name as doctor_name
+            CONCAT(p.first_name, ' ', p.last_name) as patient_name,
+            p.mrn as medical_record_number,
+            p.mrn,
+            CONCAT(u.first_name, ' ', u.last_name) as doctor_name
      FROM appointments a
      JOIN patients p ON a.patient_id = p.patient_id
      JOIN users u ON a.doctor_id = u.user_id

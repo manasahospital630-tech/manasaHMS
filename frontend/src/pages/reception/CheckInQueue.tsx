@@ -43,11 +43,10 @@ export const CheckInQueue: React.FC = () => {
 
   const fetchData = async () => {
     setLoading(true);
-    const today = new Date().toISOString().split('T')[0];
     try {
-      // Fetch all checked-in / scheduled appointments for today or all
-      const res = await api.get(`/appointments?date=${today}`);
-      const list = res.data.data.appointments || res.data.data || [];
+      // Fetch all checked-in / scheduled appointments
+      const res = await api.get('/appointments?limit=200');
+      const list = res.data.data?.appointments || res.data.data || [];
       setAppointments(list);
     } catch (err: any) {
       console.warn('Queue fetch error:', err);

@@ -9,7 +9,9 @@ export declare const getOpdKpiSummary: (req: Request, res: Response) => Promise<
  */
 export declare const getOpdGrowthChart: (req: Request, res: Response) => Promise<void>;
 /**
- * 3. Master Filterable Records Endpoint
+ * 3. Master OPD Filterable Records Grid Endpoint
+ * Returns paginated, searchable, multi-filtered OPD records with patient identity & billing info
  */
+export declare const getOpdMasterRecords: (req: Request, res: Response) => Promise<void>;
 export declare const getFilteredOpdRecords: (req: Request, res: Response) => Promise<void>;
 //# sourceMappingURL=opdAnalytics.controller.d.ts.map
