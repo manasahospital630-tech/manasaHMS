@@ -193,6 +193,9 @@ const OPCheckIn: React.FC = () => {
         setLastPatient(patient);
         setShowSlipModal(true);
 
+        // Automatically trigger print dialog right after OP booking
+        printConsultationSlip(res.data.data, patient);
+
         // Reset state
         setPatient(null);
         setSelectedDoctorId('');
@@ -561,6 +564,10 @@ const OPCheckIn: React.FC = () => {
       </html>
     `);
     printWindow.document.close();
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 250);
   };
 
   // Helper to re-print slip directly from the table

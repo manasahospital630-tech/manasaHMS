@@ -2,19 +2,19 @@ import { z } from 'zod';
 export declare const createAppointmentSchema: z.ZodObject<{
     patientId: z.ZodString;
     doctorId: z.ZodString;
-    appointmentDate: z.ZodEffects<z.ZodString, string, string>;
+    appointmentDate: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
     symptomsBrief: z.ZodOptional<z.ZodString>;
     notes: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     patientId: string;
     doctorId: string;
-    appointmentDate: string;
+    appointmentDate?: string | undefined;
     symptomsBrief?: string | undefined;
     notes?: string | undefined;
 }, {
     patientId: string;
     doctorId: string;
-    appointmentDate: string;
+    appointmentDate?: string | undefined;
     symptomsBrief?: string | undefined;
     notes?: string | undefined;
 }>;
