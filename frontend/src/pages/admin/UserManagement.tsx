@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Plus, Edit, Search, CheckCircle, AlertCircle, Building2, Lock, ShieldCheck, Stethoscope, Eye, Trash2 } from 'lucide-react';
+import { Users, Plus, Edit, Search, CheckCircle, AlertCircle, Building2, Lock, ShieldCheck, Stethoscope, Eye, Trash2, Microscope, HeartPulse, Pill, Briefcase } from 'lucide-react';
 import { Table } from '../../components/ui/Table';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -11,27 +11,23 @@ import { Badge } from '../../components/ui/Badge';
 import api from '../../api/client';
 import { formatCurrency } from '../../utils/formatters';
 
-const DEPARTMENT_OPTIONS = [
-  'General Medicine',
-  'Cardiology',
-  'Neurology',
-  'Orthopedics',
-  'Pediatrics',
-  'Gynecology & Obstetrics',
-  'Dermatology',
-  'Ophthalmology',
-  'ENT (Otolaryngology)',
-  'Radiology',
-  'Laboratory / Pathology',
-  'Surgery / OT',
-  'Emergency / ICU',
-  'Inpatient (IP)',
-  'Outpatient (OPD)',
-  'Pharmacy',
-  'Billing & Finance',
-  'Administration',
-  'Other'
+const CORE_CATEGORIES = [
+  'Clinical Departments',
+  'Diagnostic & Laboratory',
+  'Nursing & Inpatient Care',
+  'Surgical & Procedural',
+  'Allied Health & Support',
+  'Administrative & Operations'
 ];
+
+const DEFAULT_ROLE_FOR_CATEGORY: Record<string, string> = {
+  'Clinical Departments': 'Doctor',
+  'Diagnostic & Laboratory': 'Lab Technician',
+  'Nursing & Inpatient Care': 'Nurse',
+  'Surgical & Procedural': 'Doctor',
+  'Allied Health & Support': 'Pharmacist',
+  'Administrative & Operations': 'Billing'
+};
 
 const ROLE_OPTIONS = [
   { value: 'Doctor', label: 'Doctor / Physician' },
@@ -52,15 +48,90 @@ const UserManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
 
+  // Raw departments fetched from GET /departments
+  const [rawDepartments, setRawDepartments] = useState<any[]>([]);
+  const [dynamicRoles, setDynamicRoles] = useState<any[]>([]);
+
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
-  const [customDept, setCustomDept] = useState('');
 
   // Delete Confirm Modal State
   const [deletingUser, setDeletingUser] = useState<any | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const [form, setForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    password: '',
+    category: 'Clinical Departments',
+    department: 'General Medicine',
+    role: 'Doctor',
+    specialization: '',
+    designation: '',
+    licenseNumber: '',
+    consultationFee: '500',
+    nursingLicense: '',
+    labCertId: '',
+    pharmacyLicense: '',
+    employeeId: '',
+    isActive: true,
+  });
+
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [userRes, rolesRes, deptRes] = await Promise.all([
+        api.get(`/admin/users?search=${encodeURIComponent(search)}&limit=200`),
+        api.get('/admin/roles').catch(() => ({ data: { data: [] } })),
+        api.get('/departments').catch(() => ({ data: { data: [] } }))
+      ]);
+      setUsers(userRes.data.data?.users || []);
+      if (rolesRes.data.data && rolesRes.data.data.length > 0) {
+        setDynamicRoles(rolesRes.data.data);
+      }
+      if (deptRes.data?.data && deptRes.data.data.length > 0) {
+        setRawDepartments(deptRes.data.data);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch users:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [search]);
+
+  // Extract categories dynamically
+  const categoriesList = Array.from(new Set(rawDepartments.map(d => d.categoryName))).filter(Boolean);
+  const availableCategories = categoriesList.length > 0 ? categoriesList : CORE_CATEGORIES;
+
+  // Filter departments for selected category
+  const categoryDepartments = rawDepartments.filter(d => d.categoryName === form.category);
+  const departmentOptions = categoryDepartments.length > 0
+    ? categoryDepartments.map(d => d.departmentName)
+    : ['General Medicine', 'Cardiology', 'Pediatrics', 'Orthopedics', 'Other'];
+
+  const handleCategoryChange = (newCategory: string) => {
+    const deptsInCat = rawDepartments.filter(d => d.categoryName === newCategory);
+    const defaultDept = deptsInCat[0]?.departmentName || 'General Medicine';
+    const defaultRole = DEFAULT_ROLE_FOR_CATEGORY[newCategory] || 'Doctor';
+
+    setForm(prev => ({
+      ...prev,
+      category: newCategory,
+      department: defaultDept,
+      role: defaultRole
+    }));
+  };
 
   const handleConfirmDelete = async () => {
     if (!deletingUser) return;
@@ -79,100 +150,60 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  const [form, setForm] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    password: '',
-    role: 'Doctor',
-    department: 'General Medicine',
-    specialization: '',
-    licenseNumber: '',
-    consultationFee: '0',
-    isActive: true,
-  });
-
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
-  const [dynamicRoles, setDynamicRoles] = useState<any[]>([]);
-
-  const [departmentOptionsList, setDepartmentOptionsList] = useState<string[]>(DEPARTMENT_OPTIONS);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [userRes, rolesRes, deptRes] = await Promise.all([
-        api.get(`/admin/users?search=${encodeURIComponent(search)}&limit=200`),
-        api.get('/admin/roles').catch(() => ({ data: { data: [] } })),
-        api.get('/departments').catch(() => ({ data: { data: [] } }))
-      ]);
-      setUsers(userRes.data.data?.users || []);
-      if (rolesRes.data.data && rolesRes.data.data.length > 0) {
-        setDynamicRoles(rolesRes.data.data);
-      }
-      if (deptRes.data?.data && deptRes.data.data.length > 0) {
-        const fetched = deptRes.data.data.map((d: any) => d.departmentName);
-        const combined = Array.from(new Set([...fetched, ...DEPARTMENT_OPTIONS]));
-        setDepartmentOptionsList(combined);
-      }
-    } catch (err: any) {
-      console.error('Failed to fetch users:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, [search]);
-
   const handleOpenCreate = () => {
     setEditingUser(null);
+    const defaultCat = availableCategories[0] || 'Clinical Departments';
+    const deptsInCat = rawDepartments.filter(d => d.categoryName === defaultCat);
+    const defaultDept = deptsInCat[0]?.departmentName || 'General Medicine';
+
     setForm({
       firstName: '',
       lastName: '',
       email: '',
       phone: '',
       password: '',
+      category: defaultCat,
+      department: defaultDept,
       role: 'Doctor',
-      department: 'General Medicine',
       specialization: '',
+      designation: '',
       licenseNumber: '',
       consultationFee: '500',
+      nursingLicense: '',
+      labCertId: '',
+      pharmacyLicense: '',
+      employeeId: '',
       isActive: true,
     });
-    setCustomDept('');
     setError('');
     setShowModal(true);
   };
 
   const handleOpenEdit = (user: any) => {
     setEditingUser(user);
-    const dept = user.department || user.employee_department || '';
-    const isCustom = dept && !DEPARTMENT_OPTIONS.includes(dept);
+    const userDept = user.department || user.employee_department || '';
+    const deptObj = rawDepartments.find(d => d.departmentName.toLowerCase() === userDept.toLowerCase());
+    const userCat = deptObj?.categoryName || 'Clinical Departments';
 
     setForm({
       firstName: user.first_name || '',
       lastName: user.last_name || '',
       email: user.email || '',
       phone: user.phone || '',
-      password: '', // Blank means keep unchanged
+      password: '', // Keep blank if unchanged
+      category: userCat,
+      department: userDept || 'General Medicine',
       role: user.role || 'Doctor',
-      department: isCustom ? 'Other' : (dept || 'General Medicine'),
       specialization: user.employee_specialization || '',
+      designation: '',
       licenseNumber: user.license_number || '',
       consultationFee: parseFloat(user.consultation_fee || '0').toString(),
+      nursingLicense: user.license_number || '',
+      labCertId: user.license_number || '',
+      pharmacyLicense: user.license_number || '',
+      employeeId: user.license_number || '',
       isActive: user.is_active !== undefined ? user.is_active : true,
     });
-
-    if (isCustom) {
-      setCustomDept(dept);
-    } else {
-      setCustomDept('');
-    }
-
     setError('');
     setShowModal(true);
   };
@@ -180,10 +211,35 @@ const UserManagement: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Validations based on Category / Role
+    const isClinical = form.category === 'Clinical Departments' || form.category.includes('Clinical') || form.role === 'Doctor';
+    
+    if (isClinical) {
+      if (!form.licenseNumber.trim()) {
+        setError('Doctor License Number is mandatory for Clinical / Doctor category.');
+        return;
+      }
+      if (!form.consultationFee || parseFloat(form.consultationFee) < 0) {
+        setError('OPD Consultation Fee (₹) is mandatory for Clinical / Doctor category.');
+        return;
+      }
+    }
+
     setSaveLoading(true);
 
     try {
-      const finalDept = form.department === 'Other' ? customDept : form.department;
+      // Formulate final specialization & license number based on category
+      let finalLicense = form.licenseNumber;
+      if (form.category.includes('Nursing')) finalLicense = form.nursingLicense || form.licenseNumber;
+      else if (form.category.includes('Laboratory') || form.category.includes('Diagnostic')) finalLicense = form.labCertId || form.licenseNumber;
+      else if (form.category.includes('Allied') || form.category.includes('Pharmacy')) finalLicense = form.pharmacyLicense || form.licenseNumber;
+      else if (form.category.includes('Administrative')) finalLicense = form.employeeId || form.licenseNumber;
+
+      let finalSpec = form.specialization;
+      if (form.designation) {
+        finalSpec = `${form.designation}${form.specialization ? ' - ' + form.specialization : ''}`;
+      }
 
       const payload: any = {
         firstName: form.firstName,
@@ -191,35 +247,34 @@ const UserManagement: React.FC = () => {
         email: form.email,
         phone: form.phone,
         role: form.role,
-        department: finalDept,
-        specialization: form.specialization,
-        licenseNumber: form.licenseNumber,
-        consultationFee: parseFloat(form.consultationFee || '0'),
+        department: form.department,
+        specialization: finalSpec,
+        licenseNumber: finalLicense,
+        consultationFee: isClinical ? parseFloat(form.consultationFee || '0') : 0,
         isActive: form.isActive,
       };
 
+      if (form.password) {
+        payload.password = form.password;
+      }
+
       if (editingUser) {
-        if (form.password && form.password.trim().length > 0) {
-          payload.password = form.password;
-        }
         await api.patch(`/admin/users/${editingUser.user_id}`, payload);
-        setSuccess('User details updated successfully!');
+        setSuccess(`User ${form.firstName} ${form.lastName} updated successfully.`);
       } else {
-        if (!form.password || form.password.length < 6) {
-          setError('Password must be at least 6 characters.');
+        if (!form.password) {
+          setError('Password is required for new user.');
           setSaveLoading(false);
           return;
         }
-        payload.password = form.password;
         await api.post('/admin/users', payload);
-        setSuccess('New user created successfully!');
+        setSuccess(`User ${form.firstName} ${form.lastName} created successfully.`);
       }
 
       setShowModal(false);
       fetchData();
-      setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Operation failed.');
+      setError(err.response?.data?.error || 'Failed to save user.');
     } finally {
       setSaveLoading(false);
     }
@@ -227,50 +282,62 @@ const UserManagement: React.FC = () => {
 
   const toggleActive = async (user: any) => {
     try {
-      await api.patch(`/admin/users/${user.user_id}`, { isActive: !user.is_active });
+      await api.patch(`/admin/users/${user.user_id}`, {
+        isActive: !user.is_active,
+      });
       fetchData();
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to toggle status');
+      setError('Failed to update status.');
     }
   };
 
   const filteredUsers = users.filter((u) => {
-    if (!roleFilter) return true;
-    return u.role === roleFilter;
+    if (roleFilter && u.role !== roleFilter) return false;
+    return true;
   });
 
+  const isClinicalCategory = form.category === 'Clinical Departments' || form.category.includes('Clinical') || form.role === 'Doctor';
+  const isNursingCategory = form.category.includes('Nursing') || form.role === 'Nurse';
+  const isLabCategory = form.category.includes('Laboratory') || form.category.includes('Diagnostic') || form.role === 'Lab Technician';
+  const isPharmacyCategory = form.category.includes('Allied') || form.category.includes('Pharmacy') || form.role === 'Pharmacist';
+  const isAdminCategory = form.category.includes('Administrative') || form.role === 'Billing' || form.role === 'Admin' || form.role === 'Receptionist';
+
   return (
-    <div style={{ color: 'var(--text-primary)' }}>
-      {/* Header */}
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+    <div className="space-y-6" style={{ padding: '24px', background: 'var(--bg-primary)', color: 'var(--text-primary)', minHeight: '100vh' }}>
+      
+      {/* Top Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Users size={28} color="var(--accent-primary)" />
-            User Management
+            Hospital Staff & User Management
           </h1>
           <p style={{ color: 'var(--text-secondary)', margin: '4px 0 0 0', fontSize: '13px' }}>
             Create and edit hospital doctors, staff members, department assignments, and login credentials
           </p>
         </div>
         <Button variant="primary" icon={<Plus size={16} />} onClick={handleOpenCreate}>
-          Create New User
+          Create New Hospital User
         </Button>
       </div>
 
+      {/* Messages */}
       {success && (
-        <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', color: 'var(--accent-success)', padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <CheckCircle size={18} />
-          <span>{success}</span>
+        <div style={{ padding: '12px 16px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', fontWeight: 600, fontSize: '14px' }}>
+          ✅ {success}
         </div>
       )}
 
-      {/* Filter and Search Bar */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative', minWidth: '280px' }}>
-          <Input
+      {/* Search & Filter Bar */}
+      <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-primary)' }}>
+        <div style={{ flex: 1, minWidth: '240px', position: 'relative' }}>
+          <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+          <input
+            className="input"
             placeholder="Search by name, email, or department..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: '38px', width: '100%', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
           />
         </div>
         <div style={{ width: '200px' }}>
@@ -395,13 +462,13 @@ const UserManagement: React.FC = () => {
         />
       </div>
 
-      {/* User Create / Edit Modal */}
+      {/* Dynamic Condition-Based User Registration & Edit Modal */}
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '12px', width: '100%', maxWidth: '580px', padding: '24px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '12px', width: '100%', maxWidth: '640px', padding: '24px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 16px 0', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               {editingUser ? <Edit size={20} color="var(--accent-primary)" /> : <Plus size={20} color="var(--accent-primary)" />}
-              {editingUser ? `Edit User: ${editingUser.first_name} ${editingUser.last_name}` : 'Create New Hospital User'}
+              {editingUser ? `Edit Staff Member: ${editingUser.first_name} ${editingUser.last_name}` : 'Create New Hospital User / Staff'}
             </h2>
 
             {error && (
@@ -413,9 +480,11 @@ const UserManagement: React.FC = () => {
 
             <form onSubmit={handleSubmit}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                
+                {/* 1. Common Fields: Username / Name */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <Input
-                    label="First Name *"
+                    label="First Name / Username *"
                     value={form.firstName}
                     onChange={(e) => setForm({ ...form, firstName: e.target.value })}
                     required
@@ -430,6 +499,7 @@ const UserManagement: React.FC = () => {
                   />
                 </div>
 
+                {/* Common Fields: Email & Phone */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <Input
                     label="Email Address *"
@@ -437,27 +507,72 @@ const UserManagement: React.FC = () => {
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     required
-                    placeholder="doctor@hospital.com"
+                    placeholder="staff@manasahospital.com"
                   />
                   <Input
-                    label="Phone Number"
+                    label="Phone Number *"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    required
                     placeholder="+91 9876543210"
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {/* 2. Dynamic API Fetching & Cascade Filtering Logic */}
+                <div style={{ background: 'var(--bg-primary)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-primary)', display: 'grid', gap: '12px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Building2 size={15} /> Category & Department Assignment (Fetched from API)
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    {/* Category Dropdown */}
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        Category *
+                      </label>
+                      <select
+                        className="select"
+                        value={form.category}
+                        onChange={(e) => handleCategoryChange(e.target.value)}
+                        required
+                        style={{ width: '100%', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                      >
+                        {availableCategories.map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Department Dropdown (Filtered dynamically by Category) */}
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                        Department (Filtered by Category) *
+                      </label>
+                      <select
+                        className="select"
+                        value={form.department}
+                        onChange={(e) => setForm({ ...form, department: e.target.value })}
+                        required
+                        style={{ width: '100%', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                      >
+                        {departmentOptions.map((d) => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* System Role Dropdown (Auto-populated/Configurable) */}
                   <div>
                     <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      System Role *
+                      System Role (Auto-mapped for {form.category}) *
                     </label>
                     <select
                       className="select"
                       value={form.role}
                       onChange={(e) => setForm({ ...form, role: e.target.value })}
                       required
-                      style={{ width: '100%', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                      style={{ width: '100%', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
                     >
                       {(dynamicRoles.length > 0
                         ? dynamicRoles.map((r: any) => ({ value: r.role_name, label: `${r.role_name}${r.is_system_role ? '' : ' (Custom Security Role)'}` }))
@@ -467,66 +582,112 @@ const UserManagement: React.FC = () => {
                       ))}
                     </select>
                   </div>
-
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
-                      Department *
-                    </label>
-                    <select
-                      className="select"
-                      value={form.department}
-                      onChange={(e) => setForm({ ...form, department: e.target.value })}
-                      required
-                      style={{ width: '100%', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                    >
-                      {departmentOptionsList.map((d) => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
 
-                {form.department === 'Other' && (
-                  <div>
+                {/* 3. Automatic Conditional Field Mapping */}
+                {/* Scenario 1: Clinical Category (Doctor) */}
+                {isClinicalCategory && (
+                  <div style={{ background: 'rgba(37,99,235,0.04)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(37,99,235,0.2)', display: 'grid', gap: '12px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#2563eb', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Stethoscope size={15} /> Clinical Doctor Specific Fields
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <Input
+                        label="Specialization"
+                        value={form.specialization}
+                        onChange={(e) => setForm({ ...form, specialization: e.target.value })}
+                        placeholder="e.g. Cardiologist, Orthopedic Surgeon"
+                      />
+                      <Input
+                        label="Designation"
+                        value={form.designation}
+                        onChange={(e) => setForm({ ...form, designation: e.target.value })}
+                        placeholder="e.g. Senior Consultant, Junior Resident"
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <Input
+                        label="Doctor License Number *"
+                        value={form.licenseNumber}
+                        onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })}
+                        required={isClinicalCategory}
+                        placeholder="e.g. MCI-2026-8841"
+                      />
+                      <Input
+                        label="OPD Consultation Fees (₹) *"
+                        type="number"
+                        min="0"
+                        step="50"
+                        value={form.consultationFee}
+                        onChange={(e) => setForm({ ...form, consultationFee: e.target.value })}
+                        required={isClinicalCategory}
+                        placeholder="e.g. 500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Scenario 2: Nursing Category */}
+                {isNursingCategory && (
+                  <div style={{ background: 'rgba(236,72,153,0.04)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(236,72,153,0.2)' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#ec4899', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <HeartPulse size={15} /> Nursing Specific Fields
+                    </div>
                     <Input
-                      label="Specify Custom Department Name *"
-                      value={customDept}
-                      onChange={(e) => setCustomDept(e.target.value)}
-                      required
-                      placeholder="e.g. Oncology, Nephrology, etc."
+                      label="Nursing Registration License No."
+                      value={form.nursingLicense}
+                      onChange={(e) => setForm({ ...form, nursingLicense: e.target.value, licenseNumber: e.target.value })}
+                      placeholder="e.g. RN-NUR-2026-9912"
                     />
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <Input
-                    label="Specialization / Designation"
-                    value={form.specialization}
-                    onChange={(e) => setForm({ ...form, specialization: e.target.value })}
-                    placeholder="e.g. Senior Cardiologist, MD"
-                  />
-                  <Input
-                    label="License / Reg. Number"
-                    value={form.licenseNumber}
-                    onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })}
-                    placeholder="e.g. MCI-2024-8841"
-                  />
-                </div>
-
-                {form.role === 'Doctor' && (
-                  <div>
+                {/* Scenario 3: Diagnostic / Laboratory Category */}
+                {isLabCategory && (
+                  <div style={{ background: 'rgba(139,92,246,0.04)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(139,92,246,0.2)' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#8b5cf6', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Microscope size={15} /> Laboratory & Pathology Specific Fields
+                    </div>
                     <Input
-                      label="OPD Consultation Fee (₹)"
-                      type="number"
-                      min="0"
-                      step="50"
-                      value={form.consultationFee}
-                      onChange={(e) => setForm({ ...form, consultationFee: e.target.value })}
-                      placeholder="e.g. 500"
+                      label="Lab Certification ID"
+                      value={form.labCertId}
+                      onChange={(e) => setForm({ ...form, labCertId: e.target.value, licenseNumber: e.target.value })}
+                      placeholder="e.g. LAB-CERT-2026-4410"
                     />
                   </div>
                 )}
 
+                {/* Scenario 4: Pharmacy Category */}
+                {isPharmacyCategory && (
+                  <div style={{ background: 'rgba(16,185,129,0.04)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#10b981', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Pill size={15} /> Pharmacy Specific Fields
+                    </div>
+                    <Input
+                      label="Pharmacy License No."
+                      value={form.pharmacyLicense}
+                      onChange={(e) => setForm({ ...form, pharmacyLicense: e.target.value, licenseNumber: e.target.value })}
+                      placeholder="e.g. PHARM-LIC-2026-8821"
+                    />
+                  </div>
+                )}
+
+                {/* Scenario 5: Administration Category */}
+                {isAdminCategory && (
+                  <div style={{ background: 'rgba(245,158,11,0.04)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.2)' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#f59e0b', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Briefcase size={15} /> Administrative Staff Fields
+                    </div>
+                    <Input
+                      label="Employee ID"
+                      value={form.employeeId}
+                      onChange={(e) => setForm({ ...form, employeeId: e.target.value, licenseNumber: e.target.value })}
+                      placeholder="e.g. EMP-2026-004"
+                    />
+                  </div>
+                )}
+
+                {/* Password Input */}
                 <div style={{ background: 'var(--bg-primary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-primary)' }}>
                   <Input
                     label={editingUser ? "Reset Password (Leave blank to keep current password)" : "Password *"}
