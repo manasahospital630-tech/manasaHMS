@@ -1,4 +1,5 @@
 import { query } from '../../config/database';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface PermissionMatrixItem {
   module_id: string;
@@ -67,28 +68,48 @@ export const getRoleById = async (roleId: string) => {
       COALESCE(rp.can_append, false) as can_append,
       COALESCE(rp.can_append_to, false) as can_append_to,
       COALESCE(rp.is_hidden, false) as is_hidden,
-      COALESCE(rp.custom_permissions, '{}'::jsonb) as custom_permissions
+      COALESCE(rp.custom_permissions, '{}') as custom_permissions
     FROM modules_master mm
     LEFT JOIN role_permissions rp ON mm.module_id = rp.module_id AND rp.role_id = $1
     ORDER BY mm.display_order ASC
   `, [roleId]);
 
+  const permissions = permRes.rows.map(p => {
+    let custom_permissions = p.custom_permissions;
+    if (typeof custom_permissions === 'string') {
+      try {
+        custom_permissions = JSON.parse(custom_permissions);
+      } catch (e) {
+        custom_permissions = {};
+      }
+    }
+    return {
+      ...p,
+      can_view: Boolean(p.can_view),
+      can_create: Boolean(p.can_create),
+      can_edit: Boolean(p.can_edit),
+      can_delete: Boolean(p.can_delete),
+      can_append: Boolean(p.can_append),
+      can_append_to: Boolean(p.can_append_to),
+      is_hidden: Boolean(p.is_hidden),
+      custom_permissions: custom_permissions || {}
+    };
+  });
+
   return {
     ...role,
-    permissions: permRes.rows
+    permissions
   };
 };
 
 export const createRole = async (input: CreateRoleInput) => {
   const { role_name, description, permissions } = input;
+  const roleId = uuidv4();
 
-  const roleRes = await query(`
-    INSERT INTO roles (role_name, description, is_system_role, is_active)
-    VALUES ($1, $2, false, true)
-    RETURNING *
-  `, [role_name, description || '']);
-
-  const role = roleRes.rows[0];
+  await query(`
+    INSERT INTO roles (role_id, role_name, description, is_system_role, is_active)
+    VALUES ($1, $2, $3, false, true)
+  `, [roleId, role_name, description || '']);
 
   if (permissions && Array.isArray(permissions)) {
     for (const p of permissions) {
@@ -96,17 +117,17 @@ export const createRole = async (input: CreateRoleInput) => {
       await query(`
         INSERT INTO role_permissions (role_id, module_id, can_view, can_create, can_edit, can_delete, can_append, can_append_to, is_hidden, custom_permissions)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        ON CONFLICT (role_id, module_id) DO UPDATE SET
-          can_view = EXCLUDED.can_view,
-          can_create = EXCLUDED.can_create,
-          can_edit = EXCLUDED.can_edit,
-          can_delete = EXCLUDED.can_delete,
-          can_append = EXCLUDED.can_append,
-          can_append_to = EXCLUDED.can_append_to,
-          is_hidden = EXCLUDED.is_hidden,
-          custom_permissions = EXCLUDED.custom_permissions;
+        ON DUPLICATE KEY UPDATE
+          can_view = VALUES(can_view),
+          can_create = VALUES(can_create),
+          can_edit = VALUES(can_edit),
+          can_delete = VALUES(can_delete),
+          can_append = VALUES(can_append),
+          can_append_to = VALUES(can_append_to),
+          is_hidden = VALUES(is_hidden),
+          custom_permissions = VALUES(custom_permissions);
       `, [
-        role.role_id,
+        roleId,
         p.module_id,
         hidden ? false : (p.can_view || false),
         hidden ? false : (p.can_create || false),
@@ -120,7 +141,7 @@ export const createRole = async (input: CreateRoleInput) => {
     }
   }
 
-  return getRoleById(role.role_id);
+  return getRoleById(roleId);
 };
 
 export const updateRole = async (roleId: string, input: Partial<CreateRoleInput>) => {
@@ -133,7 +154,7 @@ export const updateRole = async (roleId: string, input: Partial<CreateRoleInput>
           description = COALESCE($2, description),
           updated_at = NOW()
       WHERE role_id = $3
-    `, [role_name, description, roleId]);
+    `, [role_name || null, description !== undefined ? description : null, roleId]);
   }
 
   if (permissions && Array.isArray(permissions)) {
@@ -142,15 +163,15 @@ export const updateRole = async (roleId: string, input: Partial<CreateRoleInput>
       await query(`
         INSERT INTO role_permissions (role_id, module_id, can_view, can_create, can_edit, can_delete, can_append, can_append_to, is_hidden, custom_permissions)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        ON CONFLICT (role_id, module_id) DO UPDATE SET
-          can_view = EXCLUDED.can_view,
-          can_create = EXCLUDED.can_create,
-          can_edit = EXCLUDED.can_edit,
-          can_delete = EXCLUDED.can_delete,
-          can_append = EXCLUDED.can_append,
-          can_append_to = EXCLUDED.can_append_to,
-          is_hidden = EXCLUDED.is_hidden,
-          custom_permissions = EXCLUDED.custom_permissions,
+        ON DUPLICATE KEY UPDATE
+          can_view = VALUES(can_view),
+          can_create = VALUES(can_create),
+          can_edit = VALUES(can_edit),
+          can_delete = VALUES(can_delete),
+          can_append = VALUES(can_append),
+          can_append_to = VALUES(can_append_to),
+          is_hidden = VALUES(is_hidden),
+          custom_permissions = VALUES(custom_permissions),
           updated_at = NOW();
       `, [
         roleId,
@@ -191,6 +212,7 @@ export const deleteRole = async (roleId: string) => {
     throw new Error('Cannot delete role associated with active users. Reassign users first.');
   }
 
+  await query(`DELETE FROM role_permissions WHERE role_id = $1`, [roleId]);
   await query(`DELETE FROM roles WHERE role_id = $1`, [roleId]);
   return { success: true };
 };
@@ -200,14 +222,13 @@ export const getUserPermissionMatrix = async (userId: string) => {
     const res = await query(`
       SELECT 
         mm.module_key,
-        bool_or(COALESCE(rp.can_view, false)) as can_view,
-        bool_or(COALESCE(rp.can_create, false)) as can_create,
-        bool_or(COALESCE(rp.can_edit, false)) as can_edit,
-        bool_or(COALESCE(rp.can_delete, false)) as can_delete,
-        bool_or(COALESCE(rp.can_append, false)) as can_append,
-        bool_or(COALESCE(rp.can_append_to, false)) as can_append_to,
-        bool_or(COALESCE(rp.is_hidden, false)) as is_hidden,
-        jsonb_object_agg(COALESCE(rp.module_id::text, 'default'), COALESCE(rp.custom_permissions, '{}'::jsonb)) as custom_permissions
+        MAX(CASE WHEN rp.can_view = 1 THEN 1 ELSE 0 END) as can_view,
+        MAX(CASE WHEN rp.can_create = 1 THEN 1 ELSE 0 END) as can_create,
+        MAX(CASE WHEN rp.can_edit = 1 THEN 1 ELSE 0 END) as can_edit,
+        MAX(CASE WHEN rp.can_delete = 1 THEN 1 ELSE 0 END) as can_delete,
+        MAX(CASE WHEN rp.can_append = 1 THEN 1 ELSE 0 END) as can_append,
+        MAX(CASE WHEN rp.can_append_to = 1 THEN 1 ELSE 0 END) as can_append_to,
+        MAX(CASE WHEN rp.is_hidden = 1 THEN 1 ELSE 0 END) as is_hidden
       FROM user_roles ur
       JOIN role_permissions rp ON ur.role_id = rp.role_id
       JOIN modules_master mm ON rp.module_id = mm.module_id
@@ -218,14 +239,14 @@ export const getUserPermissionMatrix = async (userId: string) => {
     const matrix: Record<string, any> = {};
     res.rows.forEach(r => {
       matrix[r.module_key] = {
-        can_view: r.is_hidden ? false : r.can_view,
-        can_create: r.is_hidden ? false : r.can_create,
-        can_edit: r.is_hidden ? false : r.can_edit,
-        can_delete: r.is_hidden ? false : r.can_delete,
-        can_append: r.is_hidden ? false : r.can_append,
-        can_append_to: r.is_hidden ? false : r.can_append_to,
-        is_hidden: r.is_hidden,
-        custom_permissions: r.custom_permissions
+        can_view: Boolean(r.is_hidden) ? false : Boolean(r.can_view),
+        can_create: Boolean(r.is_hidden) ? false : Boolean(r.can_create),
+        can_edit: Boolean(r.is_hidden) ? false : Boolean(r.can_edit),
+        can_delete: Boolean(r.is_hidden) ? false : Boolean(r.can_delete),
+        can_append: Boolean(r.is_hidden) ? false : Boolean(r.can_append),
+        can_append_to: Boolean(r.is_hidden) ? false : Boolean(r.can_append_to),
+        is_hidden: Boolean(r.is_hidden),
+        custom_permissions: {}
       };
     });
 
