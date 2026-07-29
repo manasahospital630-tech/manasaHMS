@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Beaker, ShieldAlert, Award, FileText, CheckCircle, RefreshCw, X, AlertTriangle, Upload, Eye } from 'lucide-react';
+import { Beaker, ShieldAlert, Award, FileText, CheckCircle, RefreshCw, X, AlertTriangle, Upload, Eye, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import api from '../../api/client';
@@ -813,9 +813,9 @@ export const Workspaces: React.FC = () => {
                               <button 
                                 type="button"
                                 onClick={() => setExpandedPackages({ ...expandedPackages, [group.packageId]: !isExpanded })}
-                                style={{ fontSize: '11px', color: 'var(--accent-primary)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0, textDecoration: 'underline' }}
+                                style={{ fontSize: '11px', color: 'var(--accent-primary)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0, textDecoration: 'underline', display: 'flex', alignItems: 'center', gap: '2px' }}
                               >
-                                {isExpanded ? 'Hide Included Tests' : 'Show Included Tests'}
+                                {isExpanded ? <><ChevronUp size={12} /> Hide Included Tests</> : <><ChevronDown size={12} /> Show Included Tests</>}
                               </button>
                             </div>
                           </td>

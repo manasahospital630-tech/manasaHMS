@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Beaker, Layers, Plus, Edit, Trash2, X, RefreshCw, Info, CheckCircle, Printer, Search, List, Eye, AlertTriangle } from 'lucide-react';
+import { Beaker, Layers, Plus, Edit, Trash2, X, RefreshCw, Info, CheckCircle, Printer, Search, List, Eye, AlertTriangle, Lock, ChevronDown, ChevronUp } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import api from '../../api/client';
@@ -17,6 +17,7 @@ export const ServiceCatalog: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'services' | 'packages' | 'reports'>('services');
   const [dueAlertOpen, setDueAlertOpen] = useState(false);
   const [dueAlertData, setDueAlertData] = useState<{ patientName: string; dueAmount: number; invoiceId?: string } | null>(null);
+  const [expandedPackages, setExpandedPackages] = useState<Record<string, boolean>>({});
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -298,25 +299,83 @@ export const ServiceCatalog: React.FC = () => {
   const getCompletedReports = () => {
     const list: any[] = [];
     orders.forEach(o => {
-      (o.items || []).forEach((item: any) => {
-        if (item.status === 'Completed' || item.status === 'Verified') {
-          list.push({
-            ...item,
-            patient_name: o.first_name || o.last_name ? `${o.first_name || ''} ${o.last_name || ''}`.trim() : (o.patient_name || 'Patient'),
-            patient_mrn: o.medical_record_number || o.patient_mrn || '—',
-            patient_gender: o.patient_gender || o.gender || 'Male',
-            patient_birth_date: o.patient_birth_date || o.birth_date || o.date_of_birth,
-            patient_age: o.patient_age !== undefined ? o.patient_age : o.age,
-            patient_phone: o.patient_phone || o.phone,
-            order_number: o.order_number,
-            doctor_name: o.doc_first ? `Dr. ${o.doc_first} ${o.doc_last}` : (o.doctor_name || 'Dr. S Tarundas'),
-            created_at: o.created_at,
-            order: o
-          });
+      const completedItems = (o.items || []).filter((item: any) => item.status === 'Completed' || item.status === 'Verified');
+      if (completedItems.length === 0) return;
+
+      const packageGroups: { [packageId: string]: any[] } = {};
+      const standaloneItems: any[] = [];
+
+      completedItems.forEach((item: any) => {
+        const fullItem = {
+          ...item,
+          patient_name: o.first_name || o.last_name ? `${o.first_name || ''} ${o.last_name || ''}`.trim() : (o.patient_name || 'Patient'),
+          patient_mrn: o.medical_record_number || o.patient_mrn || '—',
+          patient_gender: o.patient_gender || o.gender || 'Male',
+          patient_birth_date: o.patient_birth_date || o.birth_date || o.date_of_birth,
+          patient_age: o.patient_age !== undefined ? o.patient_age : o.age,
+          patient_phone: o.patient_phone || o.phone,
+          order_number: o.order_number,
+          doctor_name: o.doc_first ? `Dr. ${o.doc_first} ${o.doc_last}` : (o.doctor_name || 'Dr. S Tarundas'),
+          patient_type: o.patient_type || 'OP',
+          due_amount: parseFloat(o.due_amount || 0),
+          invoice_id: o.invoice_id,
+          created_at: o.created_at,
+          order: o
+        };
+
+        if (item.package_id) {
+          if (!packageGroups[item.package_id]) {
+            packageGroups[item.package_id] = [];
+          }
+          packageGroups[item.package_id].push(fullItem);
+        } else {
+          standaloneItems.push(fullItem);
         }
       });
+
+      Object.keys(packageGroups).forEach(packageId => {
+        const pItems = packageGroups[packageId];
+        list.push({
+          type: 'package',
+          package_id: packageId,
+          package_name: pItems[0].package_name || 'Diagnostic Package',
+          service_name: pItems[0].package_name || 'Diagnostic Package',
+          category_name: pItems[0].category_name || 'Package Profile',
+          order_number: o.order_number,
+          patient_name: pItems[0].patient_name,
+          patient_mrn: pItems[0].patient_mrn,
+          patient_gender: pItems[0].patient_gender,
+          patient_birth_date: pItems[0].patient_birth_date,
+          patient_age: pItems[0].patient_age,
+          patient_phone: pItems[0].patient_phone,
+          doctor_name: pItems[0].doctor_name,
+          patient_type: o.patient_type || 'OP',
+          due_amount: parseFloat(o.due_amount || 0),
+          invoice_id: o.invoice_id,
+          created_at: o.created_at,
+          verification: pItems[0].verification,
+          items: pItems,
+          order: o
+        });
+      });
+
+      standaloneItems.forEach(item => {
+        list.push({
+          type: 'standalone',
+          ...item
+        });
+      });
     });
-    return list;
+
+    if (!reportSearch) return list;
+    const q = reportSearch.toLowerCase();
+    return list.filter((r: any) =>
+      (r.patient_name || '').toLowerCase().includes(q) ||
+      (r.patient_mrn || '').toLowerCase().includes(q) ||
+      (r.order_number || '').toLowerCase().includes(q) ||
+      (r.service_name || '').toLowerCase().includes(q) ||
+      (r.package_name || '').toLowerCase().includes(q)
+    );
   };
 
   const handlePrintReport = (item: any) => {
@@ -1815,40 +1874,140 @@ export const ServiceCatalog: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {getCompletedReports().map((rep: any, idx: number) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid var(--border-primary)' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 700 }}>{rep.order_number}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontWeight: 600 }}>{rep.patient_name}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>MRN: {rep.patient_mrn}</div>
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontWeight: 600 }}>{rep.service_name}</div>
-                      {rep.package_name && (
-                        <div style={{ fontSize: '10px', color: '#3b82f6', fontWeight: 600 }}>
-                          [Profile: {rep.package_name}]
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: 'var(--bg-primary)', padding: '2px 8px', borderRadius: '50px', fontSize: '11px', fontWeight: 500 }}>
-                        {rep.category_name}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      {rep.verification?.verified_at ? new Date(rep.verification.verified_at).toLocaleDateString() : 'Today'}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--accent-success)', fontWeight: 600 }}>
-                      <CheckCircle size={12} style={{ display: 'inline', marginRight: '4px' }} />
-                      {rep.verification?.verified_by_name || 'Dr. Pathologist'}
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                      <Button variant="primary" size="sm" icon={<Printer size={12} />} onClick={() => handlePrintReport(rep)}>
-                        Print PDF Report
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {getCompletedReports().map((rep: any, idx: number) => {
+                  const isPkg = rep.type === 'package';
+                  const isOpPatient = (rep.patient_type || rep.order?.patient_type || 'OP').toUpperCase() === 'OP';
+                  const isPrintLocked = isOpPatient && rep.due_amount > 0;
+                  const isExpanded = expandedPackages[rep.package_id] || false;
+
+                  if (isPkg) {
+                    return (
+                      <React.Fragment key={`pkg-${rep.package_id}-${idx}`}>
+                        <tr style={{ borderBottom: '1px solid var(--border-primary)', background: 'rgba(59, 130, 246, 0.02)' }}>
+                          <td style={{ padding: '12px 16px', fontWeight: 700 }}>{rep.order_number}</td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ fontWeight: 600 }}>{rep.patient_name}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>MRN: {rep.patient_mrn}</div>
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {rep.package_name}
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                              <span style={{ fontSize: '10px', background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                Package Profile ({rep.items?.length || 0} Tests)
+                              </span>
+                              <button 
+                                type="button"
+                                onClick={() => setExpandedPackages({ ...expandedPackages, [rep.package_id]: !isExpanded })}
+                                style={{ fontSize: '11px', color: 'var(--accent-primary)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0, textDecoration: 'underline', display: 'flex', alignItems: 'center', gap: '2px' }}
+                              >
+                                {isExpanded ? <><ChevronUp size={12} /> Hide Included Tests</> : <><ChevronDown size={12} /> Show Included Tests</>}
+                              </button>
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#2563eb', padding: '2px 8px', borderRadius: '50px', fontSize: '11px', fontWeight: 600 }}>
+                              {rep.category_name}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            {rep.verification?.verified_at ? new Date(rep.verification.verified_at).toLocaleDateString() : 'Today'}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--accent-success)', fontWeight: 600 }}>
+                            <CheckCircle size={12} style={{ display: 'inline', marginRight: '4px' }} />
+                            {rep.verification?.verified_by_name || 'Dr. Pathologist'}
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                            {isPrintLocked ? (
+                              <button 
+                                type="button"
+                                onClick={() => handlePrintReport(rep)}
+                                style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <Lock size={12} />
+                                🔒 Print Locked (Due ₹{rep.due_amount})
+                              </button>
+                            ) : (
+                              <Button variant="primary" size="sm" icon={<Printer size={12} />} onClick={() => handlePrintReport(rep)}>
+                                Print PDF Report
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={7} style={{ padding: '12px 24px', background: 'var(--bg-primary)', borderBottom: '1.5px solid var(--border-primary)' }}>
+                              <div style={{ paddingLeft: '24px', borderLeft: '3px solid var(--accent-primary)' }}>
+                                <div style={{ fontWeight: 700, fontSize: '12px', color: 'var(--text-primary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                  Included Tests in Package Profile ({rep.items?.length || 0}):
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                  {(rep.items || []).map((childItem: any) => (
+                                    <div key={childItem.item_id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', borderRadius: '6px', padding: '6px 12px', display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '180px' }}>
+                                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                        {childItem.service_name}
+                                      </div>
+                                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                        Dept: {childItem.category_name} | Status: <span style={{ color: 'var(--accent-success)', fontWeight: 600 }}>{childItem.status}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  }
+
+                  return (
+                    <tr key={idx} style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                      <td style={{ padding: '12px 16px', fontWeight: 700 }}>{rep.order_number}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600 }}>{rep.patient_name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>MRN: {rep.patient_mrn}</div>
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600 }}>{rep.service_name}</div>
+                        {rep.package_name && (
+                          <div style={{ fontSize: '10px', color: '#3b82f6', fontWeight: 600 }}>
+                            [Profile: {rep.package_name}]
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ background: 'var(--bg-primary)', padding: '2px 8px', borderRadius: '50px', fontSize: '11px', fontWeight: 500 }}>
+                          {rep.category_name}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        {rep.verification?.verified_at ? new Date(rep.verification.verified_at).toLocaleDateString() : 'Today'}
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--accent-success)', fontWeight: 600 }}>
+                        <CheckCircle size={12} style={{ display: 'inline', marginRight: '4px' }} />
+                        {rep.verification?.verified_by_name || 'Dr. Pathologist'}
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        {isPrintLocked ? (
+                          <button 
+                            type="button"
+                            onClick={() => handlePrintReport(rep)}
+                            style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            <Lock size={12} />
+                            🔒 Print Locked (Due ₹{rep.due_amount})
+                          </button>
+                        ) : (
+                          <Button variant="primary" size="sm" icon={<Printer size={12} />} onClick={() => handlePrintReport(rep)}>
+                            Print PDF Report
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
