@@ -269,10 +269,14 @@ const recordPayment = async (id, input) => {
     if (newDueAmount === 0 || newAmountPaid >= patientResponsibility)
         newStatus = 'Paid';
     await (0, database_1.query)(`UPDATE invoices SET amount_paid = $1, due_amount = $2, status = $3, payment_method = $4 WHERE invoice_id = $5`, [newAmountPaid, newDueAmount, newStatus, input.paymentMethod, id]);
+    try {
+        await (0, database_1.query)(`UPDATE billing_invoices SET paid_amount = $1, balance_amount = $2, status = $3, payment_mode = $4 WHERE invoice_id = $5 OR invoice_number = $5`, [newAmountPaid, newDueAmount, newStatus, input.paymentMethod, id]);
+    }
+    catch (e) { }
     // Sync diagnostic test order payment status if matching
     const orderNum = `BILL-LAB-${id.substring(0, 8).toUpperCase()}`;
     try {
-        await (0, database_1.query)(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2`, [newStatus, orderNum]);
+        await (0, database_1.query)(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2 OR order_id = $3`, [newStatus, orderNum, id]);
     }
     catch (e) {
         // Ignore

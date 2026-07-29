@@ -19,6 +19,14 @@ export const ServiceCatalog: React.FC = () => {
   const [dueAlertData, setDueAlertData] = useState<{ patientName: string; dueAmount: number; invoiceId?: string; orderNumber?: string } | null>(null);
   const [expandedPackages, setExpandedPackages] = useState<Record<string, boolean>>({});
 
+  // Real-time Payment Collection Modal States
+  const [collectModalOpen, setCollectModalOpen] = useState(false);
+  const [collectAmount, setCollectAmount] = useState<string>('');
+  const [collectPaymentMethod, setCollectPaymentMethod] = useState<string>('Cash');
+  const [collectNotes, setCollectNotes] = useState<string>('');
+  const [collectLoading, setCollectLoading] = useState(false);
+  const [collectError, setCollectError] = useState('');
+
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -209,7 +217,59 @@ export const ServiceCatalog: React.FC = () => {
     if (activeTab === 'reports') {
       loadOrders();
     }
+
+    const handleFocus = () => {
+      if (activeTab === 'reports') {
+        loadOrders();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [activeTab]);
+
+  const handleCollectPaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dueAlertData) return;
+    setCollectLoading(true);
+    setCollectError('');
+    try {
+      const targetInvoiceId = dueAlertData.invoiceId || dueAlertData.orderNumber;
+      if (!targetInvoiceId) throw new Error('Invoice reference not found.');
+
+      await api.post(`/billing/invoices/${targetInvoiceId}/payments`, {
+        amountPaid: parseFloat(collectAmount),
+        paymentMethod: collectPaymentMethod,
+        notes: collectNotes || 'Due collection via report print lock'
+      });
+
+      const paidVal = parseFloat(collectAmount);
+      const newDue = Math.max(0, dueAlertData.dueAmount - paidVal);
+
+      // Optimistically update orders in local state immediately
+      setOrders(prevOrders => prevOrders.map(o => {
+        if (
+          o.invoice_id === targetInvoiceId || 
+          o.order_number === targetInvoiceId || 
+          o.order_number === dueAlertData.orderNumber
+        ) {
+          return {
+            ...o,
+            due_amount: newDue,
+            payment_status: newDue === 0 ? 'Paid' : 'PartiallyPaid'
+          };
+        }
+        return o;
+      }));
+
+      setCollectModalOpen(false);
+      setDueAlertOpen(false);
+      loadOrders();
+    } catch (err: any) {
+      setCollectError(err.response?.data?.error || err.message || 'Failed to record payment.');
+    } finally {
+      setCollectLoading(false);
+    }
+  };
 
   const openAddPackageModal = () => {
     setEditingPackageId(null);
@@ -2748,7 +2808,8 @@ export const ServiceCatalog: React.FC = () => {
                   variant="primary"
                   onClick={() => {
                     setDueAlertOpen(false);
-                    navigate('/billing/invoices');
+                    setCollectAmount(dueAlertData.dueAmount.toString());
+                    setCollectModalOpen(true);
                   }}
                   style={{ background: '#2563eb', color: '#ffffff', fontWeight: 700 }}
                 >
@@ -2756,6 +2817,88 @@ export const ServiceCatalog: React.FC = () => {
                 </Button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Real-time Payment Collection Modal */}
+      {collectModalOpen && dueAlertData && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, padding: '16px' }}>
+          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '12px', width: '100%', maxWidth: '480px', overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)' }}>
+            <div style={{ background: 'var(--accent-primary)', padding: '16px 20px', color: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>💰</span>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Collect Remaining Bill Balance</h3>
+              </div>
+              <button onClick={() => setCollectModalOpen(false)} style={{ background: 'transparent', border: 'none', color: '#ffffff', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCollectPaymentSubmit} style={{ padding: '20px' }}>
+              {collectError && (
+                <div style={{ color: 'var(--accent-danger)', background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)', padding: '10px', borderRadius: '6px', marginBottom: '16px', fontSize: '13px' }}>
+                  {collectError}
+                </div>
+              )}
+
+              <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Patient: <strong>{dueAlertData.patientName}</strong></div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Invoice Ref: <strong>#{dueAlertData.invoiceId || dueAlertData.orderNumber}</strong></div>
+                <div style={{ fontSize: '13px', color: 'var(--accent-danger)', fontWeight: 700, marginTop: '4px' }}>Current Due Amount: ₹{dueAlertData.dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Amount Being Paid (₹) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={collectAmount}
+                    onChange={(e) => setCollectAmount(e.target.value)}
+                    required
+                    style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '15px', fontWeight: 700 }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Payment Mode *</label>
+                  <select
+                    className="select"
+                    value={collectPaymentMethod}
+                    onChange={(e) => setCollectPaymentMethod(e.target.value)}
+                    style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="UPI">UPI / GPay / PhonePe</option>
+                    <option value="Card">Credit / Debit Card</option>
+                    <option value="NetBanking">Net Banking</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Notes / Transaction Ref</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={collectNotes}
+                    onChange={(e) => setCollectNotes(e.target.value)}
+                    placeholder="Optional reference number or notes"
+                    style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <Button variant="secondary" type="button" onClick={() => setCollectModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" type="submit" disabled={collectLoading} style={{ background: '#10b981', color: '#ffffff', fontWeight: 700 }}>
+                  {collectLoading ? 'Processing Payment...' : 'Confirm & Collect Payment'}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}
