@@ -15,8 +15,9 @@ export const getDashboardStats = async () => {
 
   // Pending Samples count
   const pendingSamples = await query(
-    `SELECT COUNT(*) as count FROM test_order_items 
-     WHERE status = 'Ordered' AND service_id IN (SELECT service_id FROM diagnostic_services WHERE sample_required IS NOT NULL AND sample_required != 'None')`
+    `SELECT COUNT(*) as count FROM test_order_items toi
+     JOIN diagnostic_services ds ON toi.service_id = ds.service_id COLLATE utf8mb4_general_ci
+     WHERE toi.status = 'Ordered' AND ds.sample_required IS NOT NULL AND ds.sample_required != '' AND ds.sample_required != 'None'`
   );
 
   // Collected Samples count
@@ -41,7 +42,7 @@ export const getDashboardStats = async () => {
 
   // Today's Revenue
   const revenueToday = await query(
-    `SELECT COALESCE(SUM(total_amount), 0) as total FROM diagnostic_billing WHERE DATE(created_at) = $1`,
+    `SELECT COALESCE(SUM(total_amount), 0) as total FROM invoices WHERE DATE(created_at) = $1`,
     [today]
   );
 
@@ -62,25 +63,25 @@ export const getDashboardStats = async () => {
 
   // Department-wise breakdown
   const deptBreakdown = await query(`
-    SELECT c.name as department, COUNT(toi.item_id) as count
+    SELECT COALESCE(c.name, 'Diagnostics') as department, COUNT(toi.item_id) as count
     FROM test_order_items toi
-    JOIN diagnostic_services s ON toi.service_id = s.service_id
-    JOIN diagnostic_categories c ON s.category_id = c.category_id
-    GROUP BY c.name
+    JOIN diagnostic_services s ON toi.service_id = s.service_id COLLATE utf8mb4_general_ci
+    LEFT JOIN diagnostic_categories c ON s.category_id = c.category_id COLLATE utf8mb4_general_ci
+    GROUP BY COALESCE(c.name, 'Diagnostics')
   `);
 
   return {
-    todayOrders: parseInt(ordersToday.rows[0].count || '0'),
-    pendingSamples: parseInt(pendingSamples.rows[0].count || '0'),
-    collectedSamples: parseInt(collectedSamples.rows[0].count || '0'),
-    runningTests: parseInt(processingTests.rows[0].count || '0'),
-    completedReports: parseInt(completedReports.rows[0].count || '0'),
-    pendingVerification: parseInt(pendingVerification.rows[0].count || '0'),
-    todayRevenue: parseFloat(revenueToday.rows[0].total || '0'),
-    emergencyCases: parseInt(emergencyCases.rows[0].count || '0'),
+    todayOrders: parseInt(ordersToday.rows[0]?.count || '0'),
+    pendingSamples: parseInt(pendingSamples.rows[0]?.count || '0'),
+    collectedSamples: parseInt(collectedSamples.rows[0]?.count || '0'),
+    runningTests: parseInt(processingTests.rows[0]?.count || '0'),
+    completedReports: parseInt(completedReports.rows[0]?.count || '0'),
+    pendingVerification: parseInt(pendingVerification.rows[0]?.count || '0'),
+    todayRevenue: parseFloat(revenueToday.rows[0]?.total || '0'),
+    emergencyCases: parseInt(emergencyCases.rows[0]?.count || '0'),
     charts: {
-      volume: volumeChart.rows.reverse(),
-      departments: deptBreakdown.rows
+      volume: (volumeChart.rows || []).reverse(),
+      departments: deptBreakdown.rows || []
     }
   };
 };
@@ -394,103 +395,170 @@ export const deletePackage = async (packageId: string) => {
 
 // 5. Test Orders
 export const getOrders = async () => {
-  const result = await query(`
-    SELECT o.*, p.first_name, p.last_name, p.medical_record_number, p.phone as patient_phone, 
+  const ordersRes = await query(`
+    SELECT o.*, 
+           p.first_name, p.last_name, p.mrn as medical_record_number, p.phone as patient_phone, 
            p.gender as patient_gender, p.gender as gender, 
-           p.date_of_birth as patient_birth_date, p.date_of_birth as birth_date, 
-           p.age as patient_age, p.age as age,
-           u.first_name as doc_first, u.last_name as doc_last,
-           rd.name as referral_name,
-           (
-             SELECT json_agg(json_build_object(
-               'item_id', toi.item_id,
-               'service_id', toi.service_id,
-               'package_id', toi.package_id,
-               'package_name', (SELECT dp.name FROM diagnostic_packages dp WHERE dp.package_id = toi.package_id),
-               'service_name', ds.name,
-               'service_code', ds.service_code,
-               'category_name', c.name,
-               'sample_required', ds.sample_required,
-               'normal_range', ds.normal_range,
-               'price', ds.price,
-               'report_type', ds.report_type,
-               'status', toi.status,
-               'correction_required', toi.correction_required,
-               'sample', (SELECT json_build_object('sample_id', sc.sample_id, 'container_type', sc.container_type, 'barcode', sc.barcode, 'status', sc.status) FROM sample_collections sc WHERE sc.order_item_id = toi.item_id LIMIT 1),
-               'lab_result', (SELECT row_to_json(lr) FROM lab_results lr WHERE lr.order_item_id = toi.item_id LIMIT 1),
-               'radiology_report', (SELECT row_to_json(rr) FROM radiology_reports rr WHERE rr.order_item_id = toi.item_id LIMIT 1),
-               'ultrasound_report', (SELECT row_to_json(ur) FROM ultrasound_reports ur WHERE ur.order_item_id = toi.item_id LIMIT 1),
-               'ecg_report', (SELECT row_to_json(er) FROM ecg_reports er WHERE er.order_item_id = toi.item_id LIMIT 1),
-               'verification', (SELECT row_to_json(rv) FROM report_verifications rv WHERE rv.order_item_id = toi.item_id LIMIT 1),
-               'parameters', (
-                 SELECT json_agg(json_build_object(
-                   'parameter_id', dp.parameter_id,
-                   'name', dp.name,
-                   'unit', dp.unit,
-                   'reference_range', dp.reference_range,
-                   'input_type', dp.input_type,
-                   'dropdown_options', dp.dropdown_options,
-                   'min_value', dp.min_value,
-                   'max_value', dp.max_value,
-                   'age_group', dp.age_group,
-                   'gender', dp.gender,
-                   'ref_min_male', dp.ref_min_male,
-                   'ref_max_male', dp.ref_max_male,
-                   'ref_min_female', dp.ref_min_female,
-                   'ref_max_female', dp.ref_max_female,
-                   'ref_min_child', dp.ref_min_child,
-                   'ref_max_child', dp.ref_max_child,
-                   'row_type', dp.row_type
-                 ) ORDER BY dp.display_order)
-                 FROM diagnostic_parameters dp 
-                 WHERE dp.service_id = toi.service_id
-               ),
-               'result_parameters', (
-                 SELECT json_agg(json_build_object(
-                   'result_parameter_id', lrp.result_parameter_id,
-                   'parameter_id', lrp.parameter_id,
-                   'name', lrp.parameter_name,
-                   'unit', lrp.unit,
-                   'reference_range', lrp.reference_range,
-                   'actual_value', lrp.actual_value,
-                   'status', lrp.status
-                 ) ORDER BY lrp.created_at)
-                 FROM lab_result_parameters lrp
-                 WHERE lrp.order_item_id = toi.item_id
-               )
-             ))
-             FROM test_order_items toi
-             JOIN diagnostic_services ds ON toi.service_id = ds.service_id
-             JOIN diagnostic_categories c ON ds.category_id = c.category_id
-             WHERE toi.order_id = o.order_id
-           ) as items
+           p.date_of_birth as patient_birth_date, p.date_of_birth as birth_date,
+           u.first_name as doc_first, u.last_name as doc_last
     FROM test_orders o
-    JOIN patients p ON o.patient_id = p.patient_id
-    JOIN users u ON o.doctor_id = u.user_id
-    LEFT JOIN referral_doctors rd ON o.referral_id = rd.referral_id
+    JOIN patients p ON o.patient_id = p.patient_id COLLATE utf8mb4_general_ci
+    LEFT JOIN users u ON o.doctor_id = u.user_id COLLATE utf8mb4_general_ci
     ORDER BY o.created_at DESC
   `);
 
+  const orders = ordersRes.rows;
+  if (!orders || orders.length === 0) return [];
+
+  const orderIds = orders.map(o => o.order_id);
+  const placeholders = orderIds.map((_, i) => `$${i + 1}`).join(',');
+
+  const itemsRes = await query(`
+    SELECT toi.*,
+           ds.name as service_name, ds.service_code, ds.sample_required, ds.normal_range, ds.price, ds.report_type,
+           c.name as category_name,
+           dp.name as package_name
+    FROM test_order_items toi
+    LEFT JOIN diagnostic_services ds ON toi.service_id = ds.service_id COLLATE utf8mb4_general_ci
+    LEFT JOIN diagnostic_categories c ON ds.category_id = c.category_id COLLATE utf8mb4_general_ci
+    LEFT JOIN diagnostic_packages dp ON toi.package_id = dp.package_id COLLATE utf8mb4_general_ci
+    WHERE toi.order_id IN (${placeholders})
+  `, orderIds);
+
+  const items = itemsRes.rows || [];
+  const itemIds = items.map(i => i.item_id).filter(Boolean);
+
+  let samples: any[] = [];
+  let labResults: any[] = [];
+  let radReports: any[] = [];
+  let usReports: any[] = [];
+  let ecgReports: any[] = [];
+  let verifications: any[] = [];
+  let resultParams: any[] = [];
+
+  if (itemIds.length > 0) {
+    const itemPlaceholders = itemIds.map((_, i) => `$${i + 1}`).join(',');
+    
+    const [scRes, lrRes, rrRes, urRes, erRes, rvRes, lrpRes] = await Promise.all([
+      query(`SELECT * FROM sample_collections WHERE order_item_id IN (${itemPlaceholders})`, itemIds),
+      query(`SELECT * FROM lab_results WHERE order_item_id IN (${itemPlaceholders})`, itemIds),
+      query(`SELECT * FROM radiology_reports WHERE order_item_id IN (${itemPlaceholders})`, itemIds),
+      query(`SELECT * FROM ultrasound_reports WHERE order_item_id IN (${itemPlaceholders})`, itemIds),
+      query(`SELECT * FROM ecg_reports WHERE order_item_id IN (${itemPlaceholders})`, itemIds),
+      query(`SELECT * FROM report_verifications WHERE order_item_id IN (${itemPlaceholders})`, itemIds),
+      query(`SELECT * FROM lab_result_parameters WHERE order_item_id IN (${itemPlaceholders}) ORDER BY created_at ASC`, itemIds)
+    ]);
+
+    samples = scRes.rows || [];
+    labResults = lrRes.rows || [];
+    radReports = rrRes.rows || [];
+    usReports = urRes.rows || [];
+    ecgReports = erRes.rows || [];
+    verifications = rvRes.rows || [];
+    resultParams = lrpRes.rows || [];
+  }
+
+  const serviceIds = Array.from(new Set(items.map(i => i.service_id).filter(Boolean)));
+  let parameters: any[] = [];
+  if (serviceIds.length > 0) {
+    const servicePlaceholders = serviceIds.map((_, i) => `$${i + 1}`).join(',');
+    const dpRes = await query(`
+      SELECT * FROM diagnostic_parameters 
+      WHERE service_id COLLATE utf8mb4_general_ci IN (${servicePlaceholders}) 
+      ORDER BY display_order ASC
+    `, serviceIds);
+    parameters = dpRes.rows || [];
+  }
+
+  const samplesByItem: Record<string, any> = {};
+  samples.forEach(s => { samplesByItem[s.order_item_id] = s; });
+
+  const labResultByItem: Record<string, any> = {};
+  labResults.forEach(lr => { labResultByItem[lr.order_item_id] = lr; });
+
+  const radByItem: Record<string, any> = {};
+  radReports.forEach(r => { radByItem[r.order_item_id] = r; });
+
+  const usByItem: Record<string, any> = {};
+  usReports.forEach(u => { usByItem[u.order_item_id] = u; });
+
+  const ecgByItem: Record<string, any> = {};
+  ecgReports.forEach(e => { ecgByItem[e.order_item_id] = e; });
+
+  const verifByItem: Record<string, any> = {};
+  verifications.forEach(v => { verifByItem[v.order_item_id] = v; });
+
+  const resultParamsByItem: Record<string, any[]> = {};
+  resultParams.forEach(rp => {
+    if (!resultParamsByItem[rp.order_item_id]) resultParamsByItem[rp.order_item_id] = [];
+    resultParamsByItem[rp.order_item_id].push({
+      result_parameter_id: rp.result_parameter_id,
+      parameter_id: rp.parameter_id,
+      name: rp.parameter_name,
+      unit: rp.unit,
+      reference_range: rp.reference_range,
+      actual_value: rp.actual_value,
+      status: rp.status
+    });
+  });
+
+  const paramsByService: Record<string, any[]> = {};
+  parameters.forEach(p => {
+    if (!paramsByService[p.service_id]) paramsByService[p.service_id] = [];
+    paramsByService[p.service_id].push(p);
+  });
+
+  const itemsByOrder: Record<string, any[]> = {};
+  items.forEach(item => {
+    if (!itemsByOrder[item.order_id]) itemsByOrder[item.order_id] = [];
+    itemsByOrder[item.order_id].push({
+      item_id: item.item_id,
+      service_id: item.service_id,
+      package_id: item.package_id,
+      package_name: item.package_name || null,
+      service_name: item.service_name || 'Diagnostic Test',
+      service_code: item.service_code || 'TEST',
+      category_name: item.category_name || 'General',
+      sample_required: item.sample_required || 'None',
+      normal_range: item.normal_range || '',
+      price: item.price || 0,
+      report_type: item.report_type || 'Structured',
+      status: item.status,
+      correction_required: Boolean(item.correction_required),
+      sample: samplesByItem[item.item_id] || null,
+      lab_result: labResultByItem[item.item_id] || null,
+      radiology_report: radByItem[item.item_id] || null,
+      ultrasound_report: usByItem[item.item_id] || null,
+      ecg_report: ecgByItem[item.item_id] || null,
+      verification: verifByItem[item.item_id] || null,
+      parameters: paramsByService[item.service_id] || [],
+      result_parameters: resultParamsByItem[item.item_id] || []
+    });
+  });
+
   const frontendUrl = process.env.FRONTEND_URL || 'https://hms-simon518.vercel.app';
+  const supabaseUrl = process.env.SUPABASE_URL || 'https://ctrlsyhzszlufdnguerz.supabase.co';
 
-  return result.rows.map((o) => {
-    if (o.items && Array.isArray(o.items)) {
-      o.items = o.items.map((item: any) => {
-        const cleanId = (item.item_id || 'report').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const supabaseUrl = process.env.SUPABASE_URL || 'https://ctrlsyhzszlufdnguerz.supabase.co';
-        const s3QrUrl = `${supabaseUrl}/storage/v1/object/public/logos/qr_${cleanId}.png`;
-        const verifyUrl = `${frontendUrl}/verify/reports/${item.item_id}`;
+  return orders.map(o => {
+    const formattedItems = (itemsByOrder[o.order_id] || []).map(item => {
+      const cleanId = (item.item_id || 'report').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const s3QrUrl = `${supabaseUrl}/storage/v1/object/public/logos/qr_${cleanId}.png`;
+      const verifyUrl = `${frontendUrl}/verify/reports/${item.item_id}`;
 
-        // Trigger S3 QR code upload asynchronously
-        generateAndUploadQrCode(verifyUrl, item.item_id).catch(() => {});
+      generateAndUploadQrCode(verifyUrl, item.item_id).catch(() => {});
 
-        return {
-          ...item,
-          qr_code_url: s3QrUrl
-        };
-      });
-    }
-    return o;
+      return {
+        ...item,
+        qr_code_url: s3QrUrl
+      };
+    });
+
+    return {
+      ...o,
+      doc_first: o.doc_first || 'Hospital',
+      doc_last: o.doc_last || 'Doctor',
+      items: formattedItems
+    };
   });
 };
 
@@ -577,18 +645,17 @@ export const payOrder = async (orderId: string) => {
 export const collectSample = async (input: any, userId: string) => {
   await query('BEGIN');
   try {
-    // Insert collection
-    const result = await query(`
-      INSERT INTO sample_collections (order_item_id, collected_by, container_type, barcode, status, remarks)
-      VALUES ($1, $2, $3, $4, 'Collected', $5)
-      RETURNING *
-    `, [input.itemId, userId, input.containerType, input.barcode, input.remarks || '']);
+    const sampleId = uuidv4();
+    await query(`
+      INSERT INTO sample_collections (sample_id, order_item_id, collected_by, container_type, barcode, status, remarks)
+      VALUES ($1, $2, $3, $4, $5, 'Collected', $6)
+    `, [sampleId, input.itemId, userId, input.containerType, input.barcode, input.remarks || '']);
 
-    // Update item status
     await query(`UPDATE test_order_items SET status = 'SampleCollected' WHERE item_id = $1`, [input.itemId]);
 
     await query('COMMIT');
-    return result.rows[0];
+    const scFetch = await query('SELECT * FROM sample_collections WHERE sample_id = $1', [sampleId]);
+    return scFetch.rows[0];
   } catch (error) {
     await query('ROLLBACK');
     throw error;
@@ -599,19 +666,21 @@ export const collectSample = async (input: any, userId: string) => {
 export const submitLabResult = async (input: any, userId: string) => {
   await query('BEGIN');
   try {
-    const result = await query(`
-      INSERT INTO lab_results (order_item_id, entered_by, actual_result, reference_range, status, machine_reading, remarks, machine_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *
-    `, [input.itemId, userId, input.actualResult || 'Multiple Values', input.referenceRange || '', input.status, input.machineReading || '', input.remarks || '', input.machineId || null]);
+    const resultId = uuidv4();
+    await query(`
+      INSERT INTO lab_results (result_id, order_item_id, entered_by, actual_result, reference_range, status, machine_reading, remarks, machine_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `, [resultId, input.itemId, userId, input.actualResult || 'Multiple Values', input.referenceRange || '', input.status || 'Normal', input.machineReading || '', input.remarks || '', input.machineId || null]);
 
     if (input.parameters && Array.isArray(input.parameters)) {
       await query(`DELETE FROM lab_result_parameters WHERE order_item_id = $1`, [input.itemId]);
       for (const p of input.parameters) {
+        const rpId = uuidv4();
         await query(
-          `INSERT INTO lab_result_parameters (order_item_id, parameter_id, parameter_name, unit, reference_range, actual_value, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          `INSERT INTO lab_result_parameters (result_parameter_id, order_item_id, parameter_id, parameter_name, unit, reference_range, actual_value, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
+            rpId,
             input.itemId, 
             p.parameter_id || p.parameterId || null, 
             p.name || p.parameterName, 
@@ -626,7 +695,8 @@ export const submitLabResult = async (input: any, userId: string) => {
 
     await query(`UPDATE test_order_items SET status = 'Resulted', correction_required = FALSE WHERE item_id = $1`, [input.itemId]);
     await query('COMMIT');
-    return result.rows[0];
+    const lrFetch = await query('SELECT * FROM lab_results WHERE result_id = $1', [resultId]);
+    return lrFetch.rows[0];
   } catch (error) {
     await query('ROLLBACK');
     throw error;
@@ -636,15 +706,16 @@ export const submitLabResult = async (input: any, userId: string) => {
 export const submitRadiologyReport = async (input: any, userId: string) => {
   await query('BEGIN');
   try {
-    const result = await query(`
-      INSERT INTO radiology_reports (order_item_id, radiographer_id, radiologist_id, image_urls, findings, impression, conclusion)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `, [input.itemId, userId, input.radiologistId || userId, input.imageUrls || [], input.findings, input.impression, input.conclusion || '']);
+    const reportId = uuidv4();
+    await query(`
+      INSERT INTO radiology_reports (report_id, order_item_id, radiographer_id, radiologist_id, image_urls, findings, impression, conclusion)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [reportId, input.itemId, userId, input.radiologistId || userId, JSON.stringify(input.imageUrls || []), input.findings, input.impression, input.conclusion || '']);
 
     await query(`UPDATE test_order_items SET status = 'Resulted', correction_required = FALSE WHERE item_id = $1`, [input.itemId]);
     await query('COMMIT');
-    return result.rows[0];
+    const rrFetch = await query('SELECT * FROM radiology_reports WHERE report_id = $1', [reportId]);
+    return rrFetch.rows[0];
   } catch (error) {
     await query('ROLLBACK');
     throw error;
@@ -654,15 +725,16 @@ export const submitRadiologyReport = async (input: any, userId: string) => {
 export const submitUltrasoundReport = async (input: any, userId: string) => {
   await query('BEGIN');
   try {
-    const result = await query(`
-      INSERT INTO ultrasound_reports (order_item_id, sonologist_id, clinical_history, findings, impression, recommendations)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *
-    `, [input.itemId, input.sonologistId || userId, input.clinicalHistory || '', input.findings, input.impression, input.recommendations || '']);
+    const reportId = uuidv4();
+    await query(`
+      INSERT INTO ultrasound_reports (report_id, order_item_id, sonologist_id, clinical_history, findings, impression, recommendations)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [reportId, input.itemId, input.sonologistId || userId, input.clinicalHistory || '', input.findings, input.impression, input.recommendations || '']);
 
     await query(`UPDATE test_order_items SET status = 'Resulted', correction_required = FALSE WHERE item_id = $1`, [input.itemId]);
     await query('COMMIT');
-    return result.rows[0];
+    const urFetch = await query('SELECT * FROM ultrasound_reports WHERE report_id = $1', [reportId]);
+    return urFetch.rows[0];
   } catch (error) {
     await query('ROLLBACK');
     throw error;
@@ -672,19 +744,21 @@ export const submitUltrasoundReport = async (input: any, userId: string) => {
 export const submitEcgReport = async (input: any, userId: string) => {
   await query('BEGIN');
   try {
-    const result = await query(`
-      INSERT INTO ecg_reports (order_item_id, operator_id, doctor_id, graph_url, findings, interpretation, recommendation)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `, [input.itemId, userId, input.doctorId || userId, input.graphUrl || '', input.findings, input.interpretation, input.recommendation || '']);
+    const reportId = uuidv4();
+    await query(`
+      INSERT INTO ecg_reports (report_id, order_item_id, operator_id, doctor_id, graph_url, findings, interpretation, recommendation)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [reportId, input.itemId, userId, input.doctorId || userId, input.graphUrl || '', input.findings, input.interpretation, input.recommendation || '']);
 
     if (input.parameters && Array.isArray(input.parameters)) {
       await query(`DELETE FROM lab_result_parameters WHERE order_item_id = $1`, [input.itemId]);
       for (const p of input.parameters) {
+        const rpId = uuidv4();
         await query(
-          `INSERT INTO lab_result_parameters (order_item_id, parameter_id, parameter_name, unit, reference_range, actual_value, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          `INSERT INTO lab_result_parameters (result_parameter_id, order_item_id, parameter_id, parameter_name, unit, reference_range, actual_value, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
+            rpId,
             input.itemId, 
             p.parameter_id || p.parameterId || null, 
             p.name || p.parameterName, 
@@ -699,7 +773,8 @@ export const submitEcgReport = async (input: any, userId: string) => {
 
     await query(`UPDATE test_order_items SET status = 'Resulted', correction_required = FALSE WHERE item_id = $1`, [input.itemId]);
     await query('COMMIT');
-    return result.rows[0];
+    const erFetch = await query('SELECT * FROM ecg_reports WHERE report_id = $1', [reportId]);
+    return erFetch.rows[0];
   } catch (error) {
     await query('ROLLBACK');
     throw error;
@@ -710,11 +785,11 @@ export const submitEcgReport = async (input: any, userId: string) => {
 export const verifyReport = async (input: any, userId: string) => {
   await query('BEGIN');
   try {
-    const result = await query(`
-      INSERT INTO report_verifications (order_item_id, verified_by, digital_signature_used, status, notes)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `, [input.itemId, userId, input.digitalSignatureUsed || 'Verified digitally', input.status, input.notes || '']);
+    const verificationId = uuidv4();
+    await query(`
+      INSERT INTO report_verifications (verification_id, order_item_id, verified_by, digital_signature_used, status, notes)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [verificationId, input.itemId, userId, input.digitalSignatureUsed || 'Verified digitally', input.status, input.notes || '']);
 
     let finalStatus = 'Ordered';
     let correctionRequired = false;
@@ -726,7 +801,7 @@ export const verifyReport = async (input: any, userId: string) => {
       const itemRes = await query(`
         SELECT ds.sample_required 
         FROM test_order_items toi
-        JOIN diagnostic_services ds ON toi.service_id = ds.service_id
+        JOIN diagnostic_services ds ON toi.service_id = ds.service_id COLLATE utf8mb4_general_ci
         WHERE toi.item_id = $1
       `, [input.itemId]);
       const sampleReq = itemRes.rows[0]?.sample_required;
@@ -736,7 +811,8 @@ export const verifyReport = async (input: any, userId: string) => {
 
     await query(`UPDATE test_order_items SET status = $1, correction_required = $2 WHERE item_id = $3`, [finalStatus, correctionRequired, input.itemId]);
     await query('COMMIT');
-    return result.rows[0];
+    const rvFetch = await query('SELECT * FROM report_verifications WHERE verification_id = $1', [verificationId]);
+    return rvFetch.rows[0];
   } catch (error) {
     await query('ROLLBACK');
     throw error;
@@ -746,55 +822,58 @@ export const verifyReport = async (input: any, userId: string) => {
 // 9. Machines
 export const getMachines = async () => {
   const result = await query('SELECT * FROM machines ORDER BY name');
-  return result.rows;
+  return result.rows || [];
 };
 
 export const addMachine = async (input: any) => {
-  const result = await query(`
-    INSERT INTO machines (name, manufacturer, model, serial_number, calibration_date, maintenance_date, department, status)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    RETURNING *
+  const machineId = uuidv4();
+  await query(`
+    INSERT INTO machines (machine_id, name, model, serial_number, department, status, last_maintenance_date)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
   `, [
-    input.name, input.manufacturer || '', input.model || '', input.serialNumber,
-    input.calibrationDate || null, input.maintenanceDate || null, input.department || 'Laboratory', input.status
+    machineId, input.name, input.model || '', input.serialNumber || '',
+    input.department || 'Laboratory', input.status || 'Operational', input.maintenanceDate || null
   ]);
-  return result.rows[0];
+  const res = await query('SELECT * FROM machines WHERE machine_id = $1', [machineId]);
+  return res.rows[0];
 };
 
 // 10. Referral Doctors
 export const getReferrals = async () => {
   const result = await query('SELECT * FROM referral_doctors ORDER BY name');
-  return result.rows;
+  return result.rows || [];
 };
 
 export const addReferral = async (input: any) => {
-  const result = await query(`
-    INSERT INTO referral_doctors (name, hospital, commission_percentage, phone, email)
-    VALUES ($1, $2, $3, $4, $5)
-    RETURNING *
-  `, [input.name, input.hospital || '', input.commissionPercentage, input.phone || '', input.email || '']);
-  return result.rows[0];
+  const referralId = uuidv4();
+  await query(`
+    INSERT INTO referral_doctors (referral_id, name, hospital_clinic_name, commission_percentage, phone, email)
+    VALUES ($1, $2, $3, $4, $5, $6)
+  `, [referralId, input.name, input.hospital || input.hospitalClinicName || '', input.commissionPercentage || 0, input.phone || '', input.email || '']);
+  const res = await query('SELECT * FROM referral_doctors WHERE referral_id = $1', [referralId]);
+  return res.rows[0];
 };
 
 // 11. Quality Control Logs
 export const getQcLogs = async () => {
   const result = await query(`
     SELECT qc.*, m.name as machine_name, u.first_name, u.last_name
-    FROM quality_control_logs qc
-    JOIN machines m ON qc.machine_id = m.machine_id
-    LEFT JOIN users u ON qc.logged_by = u.user_id
+    FROM qc_logs qc
+    LEFT JOIN machines m ON qc.machine_id = m.machine_id COLLATE utf8mb4_general_ci
+    LEFT JOIN users u ON qc.performed_by = u.user_id COLLATE utf8mb4_general_ci
     ORDER BY qc.created_at DESC
   `);
-  return result.rows;
+  return result.rows || [];
 };
 
 export const addQcLog = async (input: any, userId: string) => {
-  const result = await query(`
-    INSERT INTO quality_control_logs (machine_id, qc_parameter, expected_value, actual_value, status, logged_by)
-    VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING *
-  `, [input.machineId, input.qcParameter, input.expectedValue || '', input.actualValue || '', input.status, userId]);
-  return result.rows[0];
+  const qcId = uuidv4();
+  await query(`
+    INSERT INTO qc_logs (qc_id, machine_id, parameter_name, target_value, measured_value, status, performed_by)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+  `, [qcId, input.machineId, input.qcParameter || input.parameterName, input.expectedValue || input.targetValue || 0, input.actualValue || input.measuredValue || 0, input.status || 'Passed', userId]);
+  const res = await query('SELECT * FROM qc_logs WHERE qc_id = $1', [qcId]);
+  return res.rows[0];
 };
 
 export const updateOrderItemStatus = async (itemId: string, status: string) => {
@@ -818,154 +897,27 @@ export const updateOrderItemStatus = async (itemId: string, status: string) => {
 };
 
 export const getPublicReport = async (itemId: string) => {
-  const result = await query(`
-    SELECT 
-      toi.item_id,
-      toi.service_id,
-      toi.package_id,
-      (SELECT dp.name FROM diagnostic_packages dp WHERE dp.package_id = toi.package_id) as package_name,
-      toi.status,
-      toi.created_at,
-      ds.name as service_name,
-      ds.service_code,
-      c.name as category_name,
-      ds.sample_required,
-      ds.normal_range,
-      ds.price,
-      o.order_number,
-      o.created_at as order_created_at,
-      p.first_name || ' ' || p.last_name AS patient_name,
-      p.medical_record_number AS patient_mrn,
-      p.gender,
-      p.gender as patient_gender,
-      p.date_of_birth as birth_date,
-      p.date_of_birth as patient_birth_date,
-      p.age,
-      p.age as patient_age,
-      p.phone as patient_phone,
-      u.first_name as doc_first,
-      u.last_name as doc_last,
-      (SELECT row_to_json(lr) FROM lab_results lr WHERE lr.order_item_id = toi.item_id LIMIT 1) as lab_result,
-      (SELECT row_to_json(rr) FROM radiology_reports rr WHERE rr.order_item_id = toi.item_id LIMIT 1) as radiology_report,
-      (SELECT row_to_json(ur) FROM ultrasound_reports ur WHERE ur.order_item_id = toi.item_id LIMIT 1) as ultrasound_report,
-      (SELECT row_to_json(er) FROM ecg_reports er WHERE er.order_item_id = toi.item_id LIMIT 1) as ecg_report,
-      (SELECT row_to_json(rv) FROM report_verifications rv WHERE rv.order_item_id = toi.item_id LIMIT 1) as verification,
-      (
-        SELECT json_agg(json_build_object(
-          'parameter_id', dp.parameter_id,
-          'name', dp.name,
-          'unit', dp.unit,
-          'reference_range', dp.reference_range,
-          'ref_min_male', dp.ref_min_male,
-          'ref_max_male', dp.ref_max_male,
-          'ref_min_female', dp.ref_min_female,
-          'ref_max_female', dp.ref_max_female,
-          'ref_min_child', dp.ref_min_child,
-          'ref_max_child', dp.ref_max_child,
-          'row_type', dp.row_type
-        ) ORDER BY dp.display_order)
-        FROM diagnostic_parameters dp
-        WHERE dp.service_id = toi.service_id
-      ) as parameters,
-      (
-        SELECT json_agg(json_build_object(
-          'result_parameter_id', lrp.result_parameter_id,
-          'parameter_id', lrp.parameter_id,
-          'name', lrp.parameter_name,
-          'unit', lrp.unit,
-          'reference_range', lrp.reference_range,
-          'actual_value', lrp.actual_value,
-          'status', lrp.status
-        ) ORDER BY lrp.created_at)
-        FROM lab_result_parameters lrp
-        WHERE lrp.order_item_id = toi.item_id
-      ) as result_parameters
-    FROM test_order_items toi
-    JOIN test_orders o ON toi.order_id = o.order_id
-    JOIN patients p ON o.patient_id = p.patient_id
-    LEFT JOIN users u ON o.doctor_id = u.user_id
-    JOIN diagnostic_services ds ON toi.service_id = ds.service_id
-    JOIN diagnostic_categories c ON ds.category_id = c.category_id
-    WHERE (toi.item_id::text = $1 OR o.order_id::text = $1 OR o.order_number = $1)
-    ORDER BY toi.created_at DESC
-    LIMIT 1
-  `, [itemId]);
-
-  if (result.rows.length === 0) return null;
-
-  const item = result.rows[0];
-  let packageItems: any[] = [];
-
-  if (item.package_id) {
-    const pkgItemsRes = await query(`
-      SELECT 
-        toi.item_id,
-        toi.service_id,
-        toi.package_id,
-        (SELECT dp.name FROM diagnostic_packages dp WHERE dp.package_id = toi.package_id) as package_name,
-        toi.status,
-        toi.created_at,
-        ds.name as service_name,
-        ds.service_code,
-        c.name as category_name,
-        ds.sample_required,
-        ds.normal_range,
-        ds.price,
-        (SELECT row_to_json(lr) FROM lab_results lr WHERE lr.order_item_id = toi.item_id LIMIT 1) as lab_result,
-        (SELECT row_to_json(rr) FROM radiology_reports rr WHERE rr.order_item_id = toi.item_id LIMIT 1) as radiology_report,
-        (SELECT row_to_json(ur) FROM ultrasound_reports ur WHERE ur.order_item_id = toi.item_id LIMIT 1) as ultrasound_report,
-        (SELECT row_to_json(er) FROM ecg_reports er WHERE er.order_item_id = toi.item_id LIMIT 1) as ecg_report,
-        (SELECT row_to_json(rv) FROM report_verifications rv WHERE rv.order_item_id = toi.item_id LIMIT 1) as verification,
-        (
-          SELECT json_agg(json_build_object(
-            'parameter_id', dp.parameter_id,
-            'name', dp.name,
-            'unit', dp.unit,
-            'reference_range', dp.reference_range,
-            'ref_min_male', dp.ref_min_male,
-            'ref_max_male', dp.ref_max_male,
-            'ref_min_female', dp.ref_min_female,
-            'ref_max_female', dp.ref_max_female,
-            'ref_min_child', dp.ref_min_child,
-            'ref_max_child', dp.ref_max_child,
-            'row_type', dp.row_type
-          ) ORDER BY dp.display_order)
-          FROM diagnostic_parameters dp
-          WHERE dp.service_id = toi.service_id
-        ) as parameters,
-        (
-          SELECT json_agg(json_build_object(
-            'result_parameter_id', lrp.result_parameter_id,
-            'parameter_id', lrp.parameter_id,
-            'name', lrp.parameter_name,
-            'unit', lrp.unit,
-            'reference_range', lrp.reference_range,
-            'actual_value', lrp.actual_value,
-            'status', lrp.status
-          ) ORDER BY lrp.created_at)
-          FROM lab_result_parameters lrp
-          WHERE lrp.order_item_id = toi.item_id
-        ) as result_parameters
-      FROM test_order_items toi
-      JOIN diagnostic_services ds ON toi.service_id = ds.service_id
-      JOIN diagnostic_categories c ON ds.category_id = c.category_id
-      WHERE toi.order_id = (SELECT order_id FROM test_order_items WHERE item_id::text = $1 OR order_id::text = $1 LIMIT 1)
-        AND toi.package_id = $2
-    `, [itemId, item.package_id]);
-    packageItems = pkgItemsRes.rows;
+  const orders = await getOrders();
+  for (const order of orders) {
+    if (order.items && Array.isArray(order.items)) {
+      const match = order.items.find((i: any) => i.item_id === itemId || order.order_id === itemId || order.order_number === itemId);
+      if (match) {
+        return {
+          ...match,
+          patient_name: `${order.first_name} ${order.last_name}`,
+          patient_mrn: order.medical_record_number,
+          gender: order.gender,
+          patient_gender: order.patient_gender,
+          birth_date: order.birth_date,
+          patient_birth_date: order.patient_birth_date,
+          patient_phone: order.patient_phone,
+          doc_first: order.doc_first,
+          doc_last: order.doc_last,
+          order_number: order.order_number,
+          order_created_at: order.created_at
+        };
+      }
+    }
   }
-
-  const cleanId = (item.item_id || 'report').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const supabaseUrl = process.env.SUPABASE_URL || 'https://ctrlsyhzszlufdnguerz.supabase.co';
-  const s3QrUrl = `${supabaseUrl}/storage/v1/object/public/logos/qr_${cleanId}.png`;
-  const frontendUrl = process.env.FRONTEND_URL || 'https://hms-simon518.vercel.app';
-  const verifyUrl = `${frontendUrl}/verify/reports/${item.item_id}`;
-
-  generateAndUploadQrCode(verifyUrl, item.item_id).catch(() => {});
-
-  return {
-    ...item,
-    package_items: packageItems,
-    qr_code_url: s3QrUrl
-  };
+  return null;
 };
