@@ -1,6 +1,7 @@
 import { query } from '../../config/database';
 import { AppError } from '../../middleware/errorHandler';
 import { generateAndUploadQrCode } from '../../utils/s3Upload';
+import { v4 as uuidv4 } from 'uuid';
 
 // 1. Dashboard Statistics
 export const getDashboardStats = async () => {
@@ -92,59 +93,73 @@ export const getCategories = async () => {
 
 // 3. Diagnostic Services (Catalog)
 export const getServices = async () => {
-  const result = await query(`
-    SELECT s.*, c.name as category_name,
-           COALESCE((
-             SELECT json_agg(json_build_object(
-               'parameter_id', dp.parameter_id,
-               'name', dp.name,
-               'unit', dp.unit,
-               'reference_range', dp.reference_range,
-               'display_order', dp.display_order,
-               'input_type', dp.input_type,
-               'dropdown_options', dp.dropdown_options,
-               'min_value', dp.min_value,
-               'max_value', dp.max_value,
-               'age_group', dp.age_group,
-               'gender', dp.gender,
-               'ref_min_male', dp.ref_min_male,
-               'ref_max_male', dp.ref_max_male,
-               'ref_min_female', dp.ref_min_female,
-               'ref_max_female', dp.ref_max_female,
-               'ref_min_child', dp.ref_min_child,
-               'ref_max_child', dp.ref_max_child,
-               'row_type', dp.row_type
-             ) ORDER BY dp.display_order)
-             FROM diagnostic_parameters dp
-             WHERE dp.service_id = s.service_id
-           ), '[]'::json) as parameters
-     FROM diagnostic_services s
-     LEFT JOIN diagnostic_categories c ON s.category_id = c.category_id
-     ORDER BY c.name, s.name
+  const servicesRes = await query(`
+    SELECT s.*, 
+           COALESCE(c.name, d.department_name, 'General') as category_name
+    FROM diagnostic_services s
+    LEFT JOIN diagnostic_categories c ON s.category_id COLLATE utf8mb4_general_ci = c.category_id COLLATE utf8mb4_general_ci
+    LEFT JOIN departments d ON (s.category_id COLLATE utf8mb4_general_ci = d.department_id COLLATE utf8mb4_general_ci OR s.category_id COLLATE utf8mb4_general_ci = CONCAT('dept-', d.department_id) COLLATE utf8mb4_general_ci)
+    ORDER BY s.name
   `);
-  return result.rows;
+
+  const services = servicesRes.rows;
+  if (services.length === 0) return [];
+
+  const paramsRes = await query(`
+    SELECT * FROM diagnostic_parameters ORDER BY display_order ASC
+  `);
+
+  const paramsByService: Record<string, any[]> = {};
+  for (const p of paramsRes.rows) {
+    if (!paramsByService[p.service_id]) paramsByService[p.service_id] = [];
+    paramsByService[p.service_id].push({
+      parameter_id: p.parameter_id,
+      name: p.name,
+      unit: p.unit,
+      reference_range: p.reference_range,
+      display_order: p.display_order,
+      input_type: p.input_type,
+      dropdown_options: p.dropdown_options,
+      min_value: p.min_value,
+      max_value: p.max_value,
+      age_group: p.age_group,
+      gender: p.gender,
+      ref_min_male: p.ref_min_male,
+      ref_max_male: p.ref_max_male,
+      ref_min_female: p.ref_min_female,
+      ref_max_female: p.ref_max_female,
+      ref_min_child: p.ref_min_child,
+      ref_max_child: p.ref_max_child,
+      row_type: p.row_type || 'parameter'
+    });
+  }
+
+  return services.map(s => ({
+    ...s,
+    parameters: paramsByService[s.service_id] || []
+  }));
 };
 
 export const addService = async (input: any) => {
   await query('BEGIN');
   try {
-    const result = await query(`
+    const serviceId = uuidv4();
+    await query(`
       INSERT INTO diagnostic_services 
-      (name, category_id, service_code, price, gst_percentage, duration_minutes, sample_required, normal_range, machine_required, home_collection_available, emergency_available, is_active, report_type)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      RETURNING *
+      (service_id, name, category_id, service_code, price, gst_percentage, duration_minutes, sample_required, normal_range, machine_required, home_collection_available, emergency_available, is_active, report_type)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     `, [
-      input.name, input.categoryId, input.serviceCode.toUpperCase(), input.price, input.gstPercentage || 0,
+      serviceId,
+      input.name, input.categoryId, (input.serviceCode || '').toUpperCase(), input.price, input.gstPercentage || 0,
       input.durationMinutes || 30, input.sampleRequired || 'None', input.normalRange || '', input.machineRequired || '',
       input.homeCollectionAvailable || false, input.emergencyAvailable || false, input.isActive !== false, input.reportType || 'Structured'
     ]);
 
-    const service = result.rows[0];
-
     if (input.parameters && Array.isArray(input.parameters)) {
       for (let i = 0; i < input.parameters.length; i++) {
         const p = input.parameters[i];
         if (p.name && p.name.trim()) {
+          const paramId = uuidv4();
           const refRange = p.referenceRange !== undefined ? p.referenceRange : (p.reference_range !== undefined ? p.reference_range : '');
           const inputType = p.inputType || p.input_type || 'Number';
           const dropdownOptions = p.dropdownOptions !== undefined ? p.dropdownOptions : (p.dropdown_options !== undefined ? p.dropdown_options : null);
@@ -157,82 +172,13 @@ export const addService = async (input: any) => {
 
           await query(`
             INSERT INTO diagnostic_parameters (
-              service_id, name, unit, reference_range, display_order, input_type, dropdown_options, 
+              parameter_id, service_id, name, unit, reference_range, display_order, input_type, dropdown_options, 
               min_value, max_value, age_group, gender,
               ref_min_male, ref_max_male, ref_min_female, ref_max_female, ref_min_child, ref_max_child, row_type
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
           `, [
-            service.service_id, 
-            p.name.trim(), 
-            p.unit !== undefined ? p.unit : (p.unit_name || ''), 
-            refRange, 
-            i + 1,
-            inputType,
-            dropdownOptions,
-            getVal(p.minValue),
-            getVal(p.maxValue),
-            p.ageGroup || p.age_group || 'Universal',
-            p.gender || 'Universal',
-            getVal(p.refMinMale),
-            getVal(p.refMaxMale),
-            getVal(p.refMinFemale),
-            getVal(p.refMaxFemale),
-            getVal(p.refMinChild),
-            getVal(p.refMaxChild),
-            rowType
-          ]);
-        }
-      }
-    }
-
-    await query('COMMIT');
-    return service;
-  } catch (err) {
-    await query('ROLLBACK');
-    throw err;
-  }
-};
-
-export const editService = async (serviceId: string, input: any) => {
-  await query('BEGIN');
-  try {
-    const result = await query(`
-      UPDATE diagnostic_services 
-      SET name = $1, category_id = $2, service_code = $3, price = $4, gst_percentage = $5, 
-          duration_minutes = $6, sample_required = $7, normal_range = $8, machine_required = $9, 
-          home_collection_available = $10, emergency_available = $11, is_active = $12, report_type = $13
-      WHERE service_id = $14
-      RETURNING *
-    `, [
-      input.name, input.categoryId, input.serviceCode.toUpperCase(), input.price, input.gstPercentage || 0,
-      input.durationMinutes || 30, input.sampleRequired || 'None', input.normalRange || '', input.machineRequired || '',
-      input.homeCollectionAvailable || false, input.emergencyAvailable || false, input.isActive !== false, input.reportType || 'Structured', serviceId
-    ]);
-
-    if (input.parameters && Array.isArray(input.parameters)) {
-      await query('DELETE FROM diagnostic_parameters WHERE service_id = $1', [serviceId]);
-      for (let i = 0; i < input.parameters.length; i++) {
-        const p = input.parameters[i];
-        if (p.name && p.name.trim()) {
-          const refRange = p.referenceRange !== undefined ? p.referenceRange : (p.reference_range !== undefined ? p.reference_range : '');
-          const inputType = p.inputType || p.input_type || 'Number';
-          const dropdownOptions = p.dropdownOptions !== undefined ? p.dropdownOptions : (p.dropdown_options !== undefined ? p.dropdown_options : null);
-          const rowType = p.rowType || p.row_type || 'parameter';
-
-          const getVal = (v: any) => {
-            if (v === null || v === undefined || v === '') return null;
-            return v.toString().trim();
-          };
-
-          await query(`
-            INSERT INTO diagnostic_parameters (
-              service_id, name, unit, reference_range, display_order, input_type, dropdown_options, 
-              min_value, max_value, age_group, gender,
-              ref_min_male, ref_max_male, ref_min_female, ref_max_female, ref_min_child, ref_max_child, row_type
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-          `, [
+            paramId,
             serviceId, 
             p.name.trim(), 
             p.unit !== undefined ? p.unit : (p.unit_name || ''), 
@@ -257,39 +203,80 @@ export const editService = async (serviceId: string, input: any) => {
     }
 
     await query('COMMIT');
+    const servFetch = await query('SELECT * FROM diagnostic_services WHERE service_id = $1', [serviceId]);
+    return servFetch.rows[0];
+  } catch (err) {
+    await query('ROLLBACK');
+    throw err;
+  }
+};
 
-    const updatedRes = await query(`
-      SELECT s.*, c.name as category_name,
-             COALESCE((
-               SELECT json_agg(json_build_object(
-                 'parameter_id', dp.parameter_id,
-                 'name', dp.name,
-                 'unit', dp.unit,
-                 'reference_range', dp.reference_range,
-                 'display_order', dp.display_order,
-                 'input_type', dp.input_type,
-                 'dropdown_options', dp.dropdown_options,
-                 'min_value', dp.min_value,
-                 'max_value', dp.max_value,
-                 'age_group', dp.age_group,
-                 'gender', dp.gender,
-                 'ref_min_male', dp.ref_min_male,
-                 'ref_max_male', dp.ref_max_male,
-                 'ref_min_female', dp.ref_min_female,
-                 'ref_max_female', dp.ref_max_female,
-                 'ref_min_child', dp.ref_min_child,
-                 'ref_max_child', dp.ref_max_child,
-                 'row_type', dp.row_type
-               ) ORDER BY dp.display_order)
-               FROM diagnostic_parameters dp
-               WHERE dp.service_id = s.service_id
-             ), '[]'::json) as parameters
-       FROM diagnostic_services s
-       LEFT JOIN diagnostic_categories c ON s.category_id = c.category_id
-       WHERE s.service_id = $1
-    `, [serviceId]);
+export const editService = async (serviceId: string, input: any) => {
+  await query('BEGIN');
+  try {
+    await query(`
+      UPDATE diagnostic_services 
+      SET name = $1, category_id = $2, service_code = $3, price = $4, gst_percentage = $5, 
+          duration_minutes = $6, sample_required = $7, normal_range = $8, machine_required = $9, 
+          home_collection_available = $10, emergency_available = $11, is_active = $12, report_type = $13
+      WHERE service_id = $14
+    `, [
+      input.name, input.categoryId, (input.serviceCode || '').toUpperCase(), input.price, input.gstPercentage || 0,
+      input.durationMinutes || 30, input.sampleRequired || 'None', input.normalRange || '', input.machineRequired || '',
+      input.homeCollectionAvailable || false, input.emergencyAvailable || false, input.isActive !== false, input.reportType || 'Structured', serviceId
+    ]);
 
-    return updatedRes.rows[0];
+    if (input.parameters && Array.isArray(input.parameters)) {
+      await query('DELETE FROM diagnostic_parameters WHERE service_id = $1', [serviceId]);
+      for (let i = 0; i < input.parameters.length; i++) {
+        const p = input.parameters[i];
+        if (p.name && p.name.trim()) {
+          const paramId = uuidv4();
+          const refRange = p.referenceRange !== undefined ? p.referenceRange : (p.reference_range !== undefined ? p.reference_range : '');
+          const inputType = p.inputType || p.input_type || 'Number';
+          const dropdownOptions = p.dropdownOptions !== undefined ? p.dropdownOptions : (p.dropdown_options !== undefined ? p.dropdown_options : null);
+          const rowType = p.rowType || p.row_type || 'parameter';
+
+          const getVal = (v: any) => {
+            if (v === null || v === undefined || v === '') return null;
+            return v.toString().trim();
+          };
+
+          await query(`
+            INSERT INTO diagnostic_parameters (
+              parameter_id, service_id, name, unit, reference_range, display_order, input_type, dropdown_options, 
+              min_value, max_value, age_group, gender,
+              ref_min_male, ref_max_male, ref_min_female, ref_max_female, ref_min_child, ref_max_child, row_type
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+          `, [
+            paramId,
+            serviceId, 
+            p.name.trim(), 
+            p.unit !== undefined ? p.unit : (p.unit_name || ''), 
+            refRange, 
+            i + 1,
+            inputType,
+            dropdownOptions,
+            getVal(p.minValue),
+            getVal(p.maxValue),
+            p.ageGroup || p.age_group || 'Universal',
+            p.gender || 'Universal',
+            getVal(p.refMinMale),
+            getVal(p.refMaxMale),
+            getVal(p.refMinFemale),
+            getVal(p.refMaxFemale),
+            getVal(p.refMinChild),
+            getVal(p.refMaxChild),
+            rowType
+          ]);
+        }
+      }
+    }
+
+    await query('COMMIT');
+    const servFetch = await query('SELECT * FROM diagnostic_services WHERE service_id = $1', [serviceId]);
+    return servFetch.rows[0];
   } catch (err) {
     await query('ROLLBACK');
     throw err;

@@ -121,33 +121,50 @@ export const ServiceCatalog: React.FC = () => {
     setError('');
     try {
       const [catsRes, servsRes, pkgsRes, settingsRes, deptRes] = await Promise.all([
-        api.get('/diagnostics/categories'),
-        api.get('/diagnostics/services'),
-        api.get('/diagnostics/packages'),
+        api.get('/diagnostics/categories').catch(() => ({ data: { success: false } })),
+        api.get('/diagnostics/services').catch(() => ({ data: { success: false } })),
+        api.get('/diagnostics/packages').catch(() => ({ data: { success: false } })),
         api.get('/admin/hospital-settings/public').catch(() => ({ data: { success: false } })),
-        api.get('/departments').catch(() => ({ data: { data: [] } }))
+        api.get('/admin/departments').catch(() => api.get('/departments')).catch(() => ({ data: { data: [] } }))
       ]);
 
-      if (catsRes.data.success) {
-        let existingCats = catsRes.data.data || [];
-        if (deptRes.data?.data) {
-          const deptCats = deptRes.data.data.map((d: any) => ({
-            category_id: `dept-${d.departmentId}`,
-            name: d.departmentName,
-            description: d.description
-          }));
-          // Merge unique categories by name
-          const catNames = new Set(existingCats.map((c: any) => c.name.toLowerCase()));
-          for (const dc of deptCats) {
-            if (!catNames.has(dc.name.toLowerCase())) {
-              existingCats.push(dc);
-            }
-          }
+      const deptList = deptRes.data?.data || deptRes.data || [];
+      
+      // Filter ONLY "Diagnostic & Laboratory" Category Departments from /admin/departments
+      const diagnosticDepts = deptList.filter((d: any) => {
+        const cat = (d.categoryName || d.category_name || d.category || '').toLowerCase();
+        const name = (d.departmentName || d.department_name || d.name || '').toLowerCase();
+        return (
+          cat === 'diagnostic & laboratory' ||
+          cat.includes('diagnostic') ||
+          cat.includes('lab') ||
+          name.includes('pathology') ||
+          name.includes('radiology') ||
+          name.includes('microbiology') ||
+          name.includes('biochemistry') ||
+          name.includes('blood bank') ||
+          name.includes('histopathology')
+        );
+      });
+
+      const formattedDeptCategories = diagnosticDepts.map((d: any) => ({
+        category_id: d.departmentId || d.department_id || `dept-${d.departmentName}`,
+        name: d.departmentName || d.department_name || d.name,
+        description: d.description || `${d.departmentName} Department`
+      }));
+
+      let existingCats = catsRes.data?.success ? (catsRes.data.data || []) : [];
+      const catNames = new Set(formattedDeptCategories.map((c: any) => c.name.toLowerCase()));
+      for (const ec of existingCats) {
+        if (!catNames.has(ec.name.toLowerCase())) {
+          formattedDeptCategories.push(ec);
         }
-        setCategories(existingCats);
       }
-      if (servsRes.data.success) {
-        const freshServices = servsRes.data.data;
+
+      setCategories(formattedDeptCategories.length > 0 ? formattedDeptCategories : existingCats);
+
+      if (servsRes.data?.success) {
+        const freshServices = servsRes.data.data || [];
         setServices(freshServices);
         setSelectedParamService((prev: any) => {
           if (!prev) return null;
@@ -155,8 +172,8 @@ export const ServiceCatalog: React.FC = () => {
           return updated || prev;
         });
       }
-      if (pkgsRes.data.success) setPackages(pkgsRes.data.data);
-      if (settingsRes.data.success) setHospitalSettings(settingsRes.data.data);
+      if (pkgsRes.data?.success) setPackages(pkgsRes.data.data || []);
+      if (settingsRes.data?.success) setHospitalSettings(settingsRes.data.data);
     } catch (err: any) {
       console.error('Failed to load diagnostics catalog:', err);
       setError('Unable to fetch services or health packages catalog.');
