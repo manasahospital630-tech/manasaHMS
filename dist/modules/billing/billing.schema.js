@@ -23,5 +23,8 @@ exports.createInvoiceSchema = zod_1.z.object({
 exports.recordPaymentSchema = zod_1.z.object({
     amountPaid: zod_1.z.number().min(0.01, { message: 'Payment amount must be positive' }),
     paymentMethod: zod_1.z.string().min(1, { message: 'Payment method is required' }),
+    transactionRef: zod_1.z.string().optional(),
+    paymentTimestamp: zod_1.z.string().optional(),
+    collectedBy: zod_1.z.string().optional(),
 });
 //# sourceMappingURL=billing.schema.js.map

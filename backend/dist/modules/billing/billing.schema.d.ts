@@ -64,12 +64,21 @@ export declare const createInvoiceSchema: z.ZodObject<{
 export declare const recordPaymentSchema: z.ZodObject<{
     amountPaid: z.ZodNumber;
     paymentMethod: z.ZodString;
+    transactionRef: z.ZodOptional<z.ZodString>;
+    paymentTimestamp: z.ZodOptional<z.ZodString>;
+    collectedBy: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     paymentMethod: string;
     amountPaid: number;
+    transactionRef?: string | undefined;
+    paymentTimestamp?: string | undefined;
+    collectedBy?: string | undefined;
 }, {
     paymentMethod: string;
     amountPaid: number;
+    transactionRef?: string | undefined;
+    paymentTimestamp?: string | undefined;
+    collectedBy?: string | undefined;
 }>;
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;

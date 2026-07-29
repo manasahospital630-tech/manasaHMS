@@ -22,6 +22,9 @@ export const createInvoiceSchema = z.object({
 export const recordPaymentSchema = z.object({
   amountPaid: z.number().min(0.01, { message: 'Payment amount must be positive' }),
   paymentMethod: z.string().min(1, { message: 'Payment method is required' }),
+  transactionRef: z.string().optional(),
+  paymentTimestamp: z.string().optional(),
+  collectedBy: z.string().optional(),
 });
 
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;

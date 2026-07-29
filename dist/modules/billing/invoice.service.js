@@ -58,6 +58,27 @@ const createInvoice = async (input) => {
             paymentMethod,
             input.notes || null
         ]);
+        // Record initial payment log entry if advance/full payment was made
+        if (amountPaid > 0) {
+            const paymentId = (0, uuid_1.v4)();
+            const paymentType = amountPaid >= patientResponsibility ? 'Full Payment' : 'Advance Payment';
+            try {
+                await client.query(`INSERT INTO invoice_payment_logs (payment_id, invoice_id, amount_paid, payment_type, payment_mode, transaction_ref, remaining_due_after_txn, collected_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
+                    paymentId,
+                    invoiceId,
+                    amountPaid,
+                    paymentType,
+                    paymentMethod || 'Cash',
+                    input.notes || null,
+                    dueAmount,
+                    'Reception Staff'
+                ]);
+            }
+            catch (e) {
+                console.error('Failed to log initial payment transaction:', e);
+            }
+        }
         // Also mirror into billing_invoices if table exists
         try {
             await client.query(`INSERT INTO billing_invoices (invoice_id, invoice_number, patient_id, total_amount, paid_amount, balance_amount, status, payment_mode, notes)
@@ -182,6 +203,13 @@ const getInvoiceById = async (id) => {
     const items = await (0, database_1.query)('SELECT * FROM invoice_items WHERE invoice_id = $1', [id]);
     const invoice = result.rows[0];
     invoice.items = items.rows;
+    try {
+        const logs = await (0, database_1.query)(`SELECT * FROM invoice_payment_logs WHERE invoice_id = $1 ORDER BY payment_timestamp ASC`, [id]);
+        invoice.payment_logs = logs.rows;
+    }
+    catch (e) {
+        invoice.payment_logs = [];
+    }
     return invoice;
 };
 exports.getInvoiceById = getInvoiceById;
@@ -228,14 +256,50 @@ const recordPayment = async (id, input) => {
     const invoice = existing.rows[0];
     const patientResponsibility = parseFloat(invoice.patient_responsibility || invoice.total_amount);
     const currentPaid = parseFloat(invoice.amount_paid || 0);
+    if (input.amountPaid <= 0) {
+        throw new errorHandler_1.AppError('Payment amount must be greater than zero.', 400);
+    }
+    const currentDue = Math.max(0, patientResponsibility - currentPaid);
+    if (input.amountPaid > currentDue + 0.01) {
+        throw new errorHandler_1.AppError(`Payment amount (Rs. ${input.amountPaid}) cannot exceed current balance due (Rs. ${currentDue.toFixed(2)}).`, 400);
+    }
     const newAmountPaid = Math.min(patientResponsibility, currentPaid + input.amountPaid);
     const newDueAmount = Math.max(0, patientResponsibility - newAmountPaid);
     let newStatus = 'PartiallyPaid';
     if (newDueAmount === 0 || newAmountPaid >= patientResponsibility)
         newStatus = 'Paid';
     await (0, database_1.query)(`UPDATE invoices SET amount_paid = $1, due_amount = $2, status = $3, payment_method = $4 WHERE invoice_id = $5`, [newAmountPaid, newDueAmount, newStatus, input.paymentMethod, id]);
-    const updated = await (0, database_1.query)('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
-    return updated.rows[0];
+    // Sync diagnostic test order payment status if matching
+    const orderNum = `BILL-LAB-${id.substring(0, 8).toUpperCase()}`;
+    try {
+        await (0, database_1.query)(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2`, [newStatus, orderNum]);
+    }
+    catch (e) {
+        // Ignore
+    }
+    // Insert payment history audit log
+    const paymentId = (0, uuid_1.v4)();
+    const paymentType = newDueAmount === 0 ? 'Final Settlement' : 'Due Collection';
+    const collectedBy = input.collectedBy || 'Reception Staff';
+    const timestamp = input.paymentTimestamp ? new Date(input.paymentTimestamp) : new Date();
+    try {
+        await (0, database_1.query)(`INSERT INTO invoice_payment_logs (payment_id, invoice_id, amount_paid, payment_type, payment_mode, transaction_ref, remaining_due_after_txn, collected_by, payment_timestamp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, [
+            paymentId,
+            id,
+            input.amountPaid,
+            paymentType,
+            input.paymentMethod,
+            input.transactionRef || null,
+            newDueAmount,
+            collectedBy,
+            timestamp
+        ]);
+    }
+    catch (e) {
+        console.error('Failed to log payment transaction:', e);
+    }
+    return await (0, exports.getInvoiceById)(id);
 };
 exports.recordPayment = recordPayment;
 const cancelInvoice = async (id) => {

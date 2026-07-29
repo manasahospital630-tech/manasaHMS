@@ -165,6 +165,21 @@ const InvoiceGenerator: React.FC = () => {
   const [listFromDate, setListFromDate] = useState<string>('');
   const [listToDate, setListToDate] = useState<string>('');
 
+  // Collect Remaining Due Modal States
+  const [collectModalOpen, setCollectModalOpen] = useState(false);
+  const [selectedCollectInvoice, setSelectedCollectInvoice] = useState<any>(null);
+  const [collectAmount, setCollectAmount] = useState<string>('');
+  const [collectMethod, setCollectMethod] = useState<string>('Cash');
+  const [collectRef, setCollectRef] = useState<string>('');
+  const [collectDate, setCollectDate] = useState<string>('');
+  const [collectLoading, setCollectLoading] = useState(false);
+  const [collectError, setCollectError] = useState('');
+
+  // Invoice Details View Modal with History Log States
+  const [viewInvoiceModalOpen, setViewInvoiceModalOpen] = useState(false);
+  const [viewInvoiceData, setViewInvoiceData] = useState<any>(null);
+  const [viewInvoiceLoading, setViewInvoiceLoading] = useState(false);
+
   const subtotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
   const total = subtotal - Number(discount) + Number(tax);
   const patientOwes = total - Number(insurance);
@@ -843,6 +858,41 @@ const InvoiceGenerator: React.FC = () => {
                   </div>
                 </div>
 
+                ${inv.payment_logs && inv.payment_logs.length > 0 ? `
+                  <div style="margin-top: 16px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; background-color: #f8fafc;">
+                    <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #1e293b; margin-bottom: 6px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+                      <span>📜 Payment & Installment Transaction History Audit Log</span>
+                      <span style="font-size: 10px; font-weight: 600; color: #64748b;">(${inv.payment_logs.length} Installment Records)</span>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                      <thead>
+                        <tr style="background: #e2e8f0; text-align: left; font-weight: 700; color: #334155;">
+                          <th style="padding: 5px 6px; border: 1px solid #cbd5e1;">Txn #</th>
+                          <th style="padding: 5px 6px; border: 1px solid #cbd5e1;">Date & Time</th>
+                          <th style="padding: 5px 6px; border: 1px solid #cbd5e1;">Type</th>
+                          <th style="padding: 5px 6px; border: 1px solid #cbd5e1;">Mode</th>
+                          <th style="padding: 5px 6px; border: 1px solid #cbd5e1;">Ref / Notes</th>
+                          <th style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: right;">Amount Paid</th>
+                          <th style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: right;">Balance Remaining</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${inv.payment_logs.map((log: any, lIdx: number) => `
+                          <tr style="border-bottom: 1px solid #e2e8f0; background: ${lIdx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+                            <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-weight: 600;">Txn #${lIdx + 1}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #e2e8f0;">${new Date(log.payment_timestamp || log.created_at).toLocaleString()}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #e2e8f0; font-weight: 600;">${log.payment_type}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #e2e8f0;">${log.payment_mode}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #e2e8f0; color: #64748b;">${log.transaction_ref || '-'}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #e2e8f0; text-align: right; font-weight: 700; color: #16a34a;">Rs. ${parseFloat(log.amount_paid).toFixed(2)}</td>
+                            <td style="padding: 5px 6px; border: 1px solid #e2e8f0; text-align: right; font-weight: 700; color: ${parseFloat(log.remaining_due_after_txn) > 0 ? '#d97706' : '#16a34a'};">Rs. ${parseFloat(log.remaining_due_after_txn).toFixed(2)}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                ` : ''}
+
                 <div class="footer-signature">
                   <div>Prepared By: <span class="prepared-by">${preparedBy}</span></div>
                   <div class="sig-line">Signature / Stamp</div>
@@ -894,6 +944,78 @@ const InvoiceGenerator: React.FC = () => {
       alert(err.response?.data?.error || 'Failed to generate invoice');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenCollectModal = (inv: any) => {
+    const totalAmt = parseFloat(inv.total_amount || inv.patient_responsibility || 0);
+    const paidAmt = parseFloat(inv.amount_paid || 0);
+    const currentDue = inv.due_amount !== undefined && inv.due_amount !== null ? parseFloat(inv.due_amount) : Math.max(0, totalAmt - paidAmt);
+
+    setSelectedCollectInvoice({
+      ...inv,
+      totalAmt,
+      paidAmt,
+      currentDue
+    });
+    setCollectAmount(currentDue.toString());
+    setCollectMethod('Cash');
+    setCollectRef('');
+    setCollectDate(new Date().toISOString().slice(0, 16));
+    setCollectError('');
+    setCollectModalOpen(true);
+  };
+
+  const handleCollectSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCollectInvoice) return;
+
+    const numCollect = parseFloat(collectAmount);
+    if (isNaN(numCollect) || numCollect <= 0) {
+      setCollectError('⚠️ Collection amount must be a positive number.');
+      return;
+    }
+    if (numCollect > selectedCollectInvoice.currentDue + 0.01) {
+      setCollectError(`⚠️ Collection amount (Rs. ${numCollect}) cannot exceed current balance due (Rs. ${selectedCollectInvoice.currentDue.toFixed(2)}).`);
+      return;
+    }
+
+    setCollectLoading(true);
+    setCollectError('');
+    try {
+      const res = await api.post(`/billing/invoices/${selectedCollectInvoice.invoice_id}/payments`, {
+        amountPaid: numCollect,
+        paymentMethod: collectMethod,
+        transactionRef: collectRef || undefined,
+        paymentTimestamp: collectDate ? new Date(collectDate).toISOString() : undefined,
+        collectedBy: 'Reception Staff'
+      });
+
+      if (res.data.success) {
+        setCollectModalOpen(false);
+        loadInvoices();
+        // Print updated invoice receipt with full installment history
+        handlePrintBill(selectedCollectInvoice.invoice_id);
+      }
+    } catch (err: any) {
+      setCollectError(err.response?.data?.error || 'Failed to record due payment collection.');
+    } finally {
+      setCollectLoading(false);
+    }
+  };
+
+  const handleViewInvoiceDetails = async (invoiceId: string) => {
+    setViewInvoiceLoading(true);
+    setViewInvoiceModalOpen(true);
+    try {
+      const res = await api.get(`/billing/invoices/${invoiceId}`);
+      if (res.data.success) {
+        setViewInvoiceData(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to load invoice details:', err);
+    } finally {
+      setViewInvoiceLoading(false);
     }
   };
 
@@ -1943,23 +2065,33 @@ const InvoiceGenerator: React.FC = () => {
                           </span>
                         </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button 
+                            onClick={() => handleViewInvoiceDetails(inv.invoice_id)} 
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 600 }}
+                            title="View Full Details & Installment History Log"
+                          >
+                            <FileText size={13} /> Details
+                          </button>
+
                           <button 
                             onClick={() => handlePrintBill(inv.invoice_id)} 
-                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}
-                            title="Print Invoice"
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}
+                            title="Print Invoice Receipt"
                           >
                             <Printer size={13} /> Print
                           </button>
-                           {(inv.status === 'Unpaid' || inv.status === 'PartiallyPaid') && (
+
+                          {(dueAmt > 0 || inv.status === 'PartiallyPaid' || inv.status === 'Unpaid') && inv.status !== 'Cancelled' && inv.status !== 'Returned' && (
                             <button 
-                              onClick={() => handleUpdateStatus(inv.invoice_id, 'Paid')} 
-                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent-success)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}
-                              title="Mark Paid via Cash"
+                              onClick={() => handleOpenCollectModal(inv)} 
+                              style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#16a34a', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', padding: '4px 8px', borderRadius: '6px', fontWeight: 700, border: '1px solid rgba(34, 197, 94, 0.3)' }}
+                              title="Collect Remaining Due Balance"
                             >
-                              <Check size={13} /> Collect Cash
+                              <DollarSign size={13} /> Collect Due
                             </button>
                           )}
+
                           {inv.status === 'Paid' && (inv.payment_method === 'Cash' || !inv.payment_method) && (
                             <button 
                               onClick={() => handleUpdateStatus(inv.invoice_id, 'Unpaid')} 
@@ -2119,6 +2251,236 @@ const InvoiceGenerator: React.FC = () => {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Collect Remaining Bill Modal */}
+      {collectModalOpen && selectedCollectInvoice && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '12px', width: '100%', maxWidth: '520px', padding: '24px', position: 'relative' }}>
+            <button onClick={() => setCollectModalOpen(false)} style={{ position: 'absolute', right: '16px', top: '16px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+              <X size={20} />
+            </button>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 16px 0', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <DollarSign size={20} color="var(--accent-success)" /> Collect Remaining Bill / Due Settlement
+            </h2>
+
+            {/* Invoice Summary Card */}
+            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', borderRadius: '8px', padding: '12px 16px', marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px' }}>
+              <div><span style={{ color: 'var(--text-muted)' }}>Invoice ID:</span> <strong>{selectedCollectInvoice.invoice_id?.substring(0, 8).toUpperCase()}</strong></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Patient Name:</span> <strong>{selectedCollectInvoice.patient_name}</strong></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Total Bill Amount:</span> <strong>{formatCurrency(selectedCollectInvoice.totalAmt)}</strong></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Previously Paid:</span> <strong style={{ color: '#16a34a' }}>{formatCurrency(selectedCollectInvoice.paidAmt)}</strong></div>
+              <div style={{ gridColumn: 'span 2', background: 'rgba(245, 158, 11, 0.12)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(245, 158, 11, 0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600, color: '#d97706' }}>Current Balance Due:</span>
+                <span style={{ fontSize: '16px', fontWeight: 800, color: '#d97706' }}>{formatCurrency(selectedCollectInvoice.currentDue)}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleCollectSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+                  Amount Being Paid Now (Rs.) *
+                </label>
+                <Input 
+                  type="number"
+                  step="0.01"
+                  required
+                  value={collectAmount}
+                  onChange={e => setCollectAmount(e.target.value)}
+                  placeholder={`Enter amount (Max: Rs. ${selectedCollectInvoice.currentDue.toFixed(2)})`}
+                  style={{ background: 'var(--bg-primary)' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+                    Payment Method *
+                  </label>
+                  <Select 
+                    value={collectMethod}
+                    onChange={e => setCollectMethod(e.target.value)}
+                    options={[
+                      { value: 'Cash', label: 'Cash' },
+                      { value: 'UPI', label: 'UPI / QR Code' },
+                      { value: 'Card', label: 'Credit / Debit Card' },
+                      { value: 'Bank Transfer', label: 'Bank Transfer / NEFT' },
+                      { value: 'Insurance', label: 'Insurance' }
+                    ]}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+                    Payment Date & Time
+                  </label>
+                  <input 
+                    type="datetime-local"
+                    className="input"
+                    value={collectDate}
+                    onChange={e => setCollectDate(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', border: '1px solid var(--border-primary)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+                  Transaction Ref / Notes (Optional)
+                </label>
+                <Input 
+                  placeholder="e.g. UPI Ref ID 987654321 / Card Approval Code"
+                  value={collectRef}
+                  onChange={e => setCollectRef(e.target.value)}
+                  style={{ background: 'var(--bg-primary)' }}
+                />
+              </div>
+
+              {/* Dynamic Calculation Banner */}
+              {(() => {
+                const numCollect = parseFloat(collectAmount) || 0;
+                const remDue = Math.max(0, selectedCollectInvoice.currentDue - numCollect);
+                const isSettled = remDue === 0;
+
+                return (
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Remaining Due After Collection</div>
+                      <div style={{ fontSize: '15px', fontWeight: 800, color: isSettled ? '#16a34a' : '#d97706', marginTop: '2px' }}>
+                        {formatCurrency(remDue)}
+                      </div>
+                    </div>
+                    <div style={{ padding: '6px 12px', borderRadius: '50px', fontSize: '12px', fontWeight: 700, background: isSettled ? 'rgba(34, 197, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)', color: isSettled ? '#16a34a' : '#d97706' }}>
+                      {isSettled ? '✅ Full Settlement (Paid)' : '⚠️ Partially Paid / Due'}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {collectError && (
+                <div style={{ color: '#dc2626', background: 'rgba(239,68,68,0.1)', padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>
+                  {collectError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                <Button type="button" variant="secondary" onClick={() => setCollectModalOpen(false)}>Cancel</Button>
+                <Button type="submit" variant="primary" loading={collectLoading}>Collect Payment & Print Receipt</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Invoice Details & Transaction Log Modal */}
+      {viewInvoiceModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: '12px', width: '100%', maxWidth: '750px', maxHeight: '85vh', overflowY: 'auto', padding: '24px', position: 'relative' }}>
+            <button onClick={() => setViewInvoiceModalOpen(false)} style={{ position: 'absolute', right: '16px', top: '16px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+              <X size={20} />
+            </button>
+
+            {viewInvoiceLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                <RefreshCw size={24} className="spin" style={{ animation: 'spin 1.5s linear infinite' }} />
+              </div>
+            ) : viewInvoiceData ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileText size={20} color="var(--accent-primary)" /> Invoice Details & Payment History
+                  </h2>
+                  <Button size="sm" variant="secondary" icon={<Printer size={14} />} onClick={() => handlePrintBill(viewInvoiceData.invoice_id)}>
+                    Print Invoice
+                  </Button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: 'var(--bg-primary)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-primary)', marginBottom: '16px', fontSize: '13px' }}>
+                  <div><span style={{ color: 'var(--text-muted)' }}>Invoice ID:</span> <strong>{viewInvoiceData.invoice_id?.substring(0, 8).toUpperCase()}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>Patient Name:</span> <strong>{viewInvoiceData.patient_name}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>Phone / MRN:</span> <strong>{viewInvoiceData.phone || viewInvoiceData.patient_phone || '-'}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>Date:</span> <strong>{new Date(viewInvoiceData.created_at).toLocaleString()}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>Total Amount:</span> <strong>{formatCurrency(parseFloat(viewInvoiceData.total_amount))}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>Total Paid:</span> <strong style={{ color: '#16a34a' }}>{formatCurrency(parseFloat(viewInvoiceData.amount_paid))}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>Balance Due:</span> <strong style={{ color: parseFloat(viewInvoiceData.due_amount) > 0 ? '#d97706' : '#16a34a' }}>{formatCurrency(parseFloat(viewInvoiceData.due_amount || 0))}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)' }}>Status:</span> <strong style={{ color: viewInvoiceData.status === 'Paid' ? '#16a34a' : viewInvoiceData.status === 'PartiallyPaid' ? '#d97706' : '#dc2626' }}>{viewInvoiceData.status}</strong></div>
+                </div>
+
+                {/* Billed Items Table */}
+                <div style={{ marginBottom: '20px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                    📦 Billed Services / Tests ({viewInvoiceData.items?.length || 0} Items)
+                  </h3>
+                  <div className="table-responsive" style={{ border: '1px solid var(--border-primary)', borderRadius: '8px' }}>
+                    <table className="table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-primary)', borderBottom: '1px solid var(--border-primary)', textAlign: 'left' }}>
+                          <th style={{ padding: '8px 10px' }}>Item Description</th>
+                          <th style={{ padding: '8px 10px' }}>Category</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'right' }}>Qty</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'right' }}>Price</th>
+                          <th style={{ padding: '8px 10px', textAlign: 'right' }}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewInvoiceData.items?.map((item: any, idx: number) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                            <td style={{ padding: '8px 10px', fontWeight: 600 }}>{item.description}</td>
+                            <td style={{ padding: '8px 10px' }}>{item.category}</td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right' }}>{item.quantity}</td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right' }}>{formatCurrency(parseFloat(item.unit_price))}</td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(item.quantity * parseFloat(item.unit_price))}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Payment History Log Table */}
+                <div style={{ marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    📜 Payment & Installment Audit Log ({viewInvoiceData.payment_logs?.length || 0} Transactions)
+                  </h3>
+                  {viewInvoiceData.payment_logs && viewInvoiceData.payment_logs.length > 0 ? (
+                    <div className="table-responsive" style={{ border: '1px solid var(--border-primary)', borderRadius: '8px' }}>
+                      <table className="table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--bg-primary)', borderBottom: '1px solid var(--border-primary)', textAlign: 'left' }}>
+                            <th style={{ padding: '8px 10px' }}>Txn #</th>
+                            <th style={{ padding: '8px 10px' }}>Date & Time</th>
+                            <th style={{ padding: '8px 10px' }}>Type</th>
+                            <th style={{ padding: '8px 10px' }}>Mode</th>
+                            <th style={{ padding: '8px 10px' }}>Ref / Notes</th>
+                            <th style={{ padding: '8px 10px', textAlign: 'right' }}>Amount Paid</th>
+                            <th style={{ padding: '8px 10px', textAlign: 'right' }}>Remaining Due</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {viewInvoiceData.payment_logs.map((log: any, idx: number) => (
+                            <tr key={log.payment_id || idx} style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                              <td style={{ padding: '8px 10px', fontWeight: 600 }}>Txn #{idx + 1}</td>
+                              <td style={{ padding: '8px 10px' }}>{new Date(log.payment_timestamp || log.created_at).toLocaleString()}</td>
+                              <td style={{ padding: '8px 10px', fontWeight: 600 }}>{log.payment_type}</td>
+                              <td style={{ padding: '8px 10px' }}>{log.payment_mode}</td>
+                              <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>{log.transaction_ref || '-'}</td>
+                              <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#16a34a' }}>{formatCurrency(parseFloat(log.amount_paid))}</td>
+                              <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: parseFloat(log.remaining_due_after_txn) > 0 ? '#d97706' : '#16a34a' }}>{formatCurrency(parseFloat(log.remaining_due_after_txn))}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ padding: '16px', background: 'var(--bg-primary)', borderRadius: '8px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                      No separate payment installment logs recorded yet.
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       )}
