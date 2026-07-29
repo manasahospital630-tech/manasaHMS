@@ -408,11 +408,6 @@ export const getOrders = async () => {
                  OR inv.invoice_id COLLATE utf8mb4_general_ci LIKE CONCAT(LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1)), '%')
                  OR inv.invoice_number COLLATE utf8mb4_general_ci = o.order_number COLLATE utf8mb4_general_ci
               LIMIT 1),
-             (SELECT inv2.due_amount FROM invoices inv2 
-              WHERE inv2.invoice_id COLLATE utf8mb4_general_ci = LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1))
-                 OR inv2.invoice_id COLLATE utf8mb4_general_ci LIKE CONCAT(LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1)), '%')
-                 OR inv2.invoice_number COLLATE utf8mb4_general_ci = o.order_number COLLATE utf8mb4_general_ci
-              LIMIT 1),
              0
            ) as due_amount,
            COALESCE(
@@ -420,11 +415,6 @@ export const getOrders = async () => {
               WHERE inv.invoice_id COLLATE utf8mb4_general_ci = LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1))
                  OR inv.invoice_id COLLATE utf8mb4_general_ci LIKE CONCAT(LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1)), '%')
                  OR inv.invoice_number COLLATE utf8mb4_general_ci = o.order_number COLLATE utf8mb4_general_ci
-              LIMIT 1),
-             (SELECT inv2.invoice_id FROM invoices inv2 
-              WHERE inv2.invoice_id COLLATE utf8mb4_general_ci = LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1))
-                 OR inv2.invoice_id COLLATE utf8mb4_general_ci LIKE CONCAT(LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1)), '%')
-                 OR inv2.invoice_number COLLATE utf8mb4_general_ci = o.order_number COLLATE utf8mb4_general_ci
               LIMIT 1),
              NULL
            ) as invoice_id
