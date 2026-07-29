@@ -1450,20 +1450,66 @@ const InvoiceGenerator: React.FC = () => {
                   </div>
                 )}
               </div>
-
             </div>
           </div>
 
           <div className="card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', padding: '20px', borderRadius: '12px', marginBottom: '24px' }}>
             <div className="form-section-title" style={{ fontWeight: 700, marginBottom: '12px' }}>Line Items</div>
             
-            {/* Catalog search box */}
-            {allCatalogItems.length > 0 && (
-              <div style={{ marginBottom: '16px', background: 'var(--bg-primary)', padding: '12px', borderRadius: '8px', border: '1px dashed var(--border-primary)' }}>
-                <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                  Quick Search Diagnostics Services & Profiles / Packages Catalog (By Code, Test Name, or Package Title)
+            {/* Catalog Select & Search Box */}
+            <div style={{ marginBottom: '16px', background: 'var(--bg-primary)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              
+              {/* Direct Select Dropdown for Diagnostic Test Services & Packages */}
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--accent-primary)', display: 'block', marginBottom: '6px', fontWeight: 700 }}>
+                  🧪 Select Test Service or Profile/Package from Diagnostics Catalog
                 </label>
+                <select
+                  className="select"
+                  value=""
+                  onChange={(e) => {
+                    const selectedId = e.target.value;
+                    if (!selectedId) return;
+                    const found = allCatalogItems.find(item => item.id === selectedId);
+                    if (found) {
+                      setItemForm({
+                        description: found.name,
+                        category: 'Diagnostics',
+                        quantity: '1',
+                        unitPrice: parseFloat(found.price).toString()
+                      });
+                    }
+                  }}
+                  style={{ width: '100%', background: 'var(--bg-card)', color: 'var(--text-primary)', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', border: '1px solid var(--border-primary)' }}
+                >
+                  <option value="">-- Choose Individual Test Service or Package from Catalog ({allCatalogItems.length} items available) --</option>
+                  {diagServices.length > 0 && (
+                    <optgroup label="🧪 Individual Diagnostic Test Services">
+                      {diagServices.map(s => (
+                        <option key={`svc-${s.service_id}`} value={`svc-${s.service_id}`}>
+                          [{s.service_code}] {s.name} - Rs. {parseFloat(s.price).toFixed(0)} ({s.category_name || 'Diagnostics'})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {diagPackages.length > 0 && (
+                    <optgroup label="📦 Diagnostic Profiles & Health Packages">
+                      {diagPackages.map(p => (
+                        <option key={`pkg-${p.package_id}`} value={`pkg-${p.package_id}`}>
+                          📦 {p.name} - Rs. {parseFloat(p.price).toFixed(0)} ({p.services?.length || 0} Tests Included)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {/* Quick Search Input */}
+              {allCatalogItems.length > 0 && (
                 <div style={{ position: 'relative' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 600 }}>
+                    Or Quick Search by Test Code / Name / Profile Title:
+                  </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-card)', border: '1px solid var(--border-primary)', padding: '8px 12px', borderRadius: '8px' }}>
                     <Search size={16} color="var(--text-muted)" />
                     <input 
@@ -1492,7 +1538,7 @@ const InvoiceGenerator: React.FC = () => {
                   </div>
 
                   {/* Floating autocomplete results list */}
-                  {diagDropdownOpen && diagSearchQuery && (
+                  {diagDropdownOpen && (
                     <div style={{ 
                       position: 'absolute', 
                       top: '100%', 
@@ -1509,6 +1555,7 @@ const InvoiceGenerator: React.FC = () => {
                     }}>
                       {allCatalogItems
                         .filter(item => 
+                          !diagSearchQuery ||
                           item.name.toLowerCase().includes(diagSearchQuery.toLowerCase()) || 
                           item.code.toLowerCase().includes(diagSearchQuery.toLowerCase())
                         )
@@ -1558,6 +1605,7 @@ const InvoiceGenerator: React.FC = () => {
                           </div>
                         ))}
                       {allCatalogItems.filter(item => 
+                        !diagSearchQuery ||
                         item.name.toLowerCase().includes(diagSearchQuery.toLowerCase()) || 
                         item.code.toLowerCase().includes(diagSearchQuery.toLowerCase())
                       ).length === 0 && (
@@ -1568,8 +1616,8 @@ const InvoiceGenerator: React.FC = () => {
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 80px 100px auto', gap: '10px', alignItems: 'end', marginBottom: '16px' }}>
               <Input label="Description" value={itemForm.description} onChange={e => setItemForm({ ...itemForm, description: e.target.value })} style={{ background: 'var(--bg-primary)' }} />

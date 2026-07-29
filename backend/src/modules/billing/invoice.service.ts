@@ -1,6 +1,7 @@
 import { query, getClient } from '../../config/database';
 import { CreateInvoiceInput, RecordPaymentInput } from './billing.schema';
 import { AppError } from '../../middleware/errorHandler';
+import { v4 as uuidv4 } from 'uuid';
 
 export const createInvoice = async (input: CreateInvoiceInput) => {
   const client = await getClient();
@@ -14,10 +15,15 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
     const status = input.paymentStatus === 'Paid' ? 'Paid' : 'Unpaid';
     const paymentMethod = input.paymentStatus === 'Paid' ? (input.paymentMethod || 'Cash') : null;
 
-    const invoiceResult = await client.query(
-      `INSERT INTO invoices (patient_id, encounter_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, status, payment_method, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    const invoiceId = uuidv4();
+    const invoiceNum = `INV-${Date.now().toString().slice(-6)}`;
+
+    await client.query(
+      `INSERT INTO invoices (invoice_id, invoice_number, patient_id, encounter_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, status, payment_method, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
+        invoiceId,
+        invoiceNum,
         input.patientId, 
         input.encounterId || null, 
         totalAmount, 
@@ -31,12 +37,23 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
         input.notes || null
       ]
     );
-    const invoice = invoiceResult.rows[0];
+
+    // Also mirror into billing_invoices if table exists
+    try {
+      await client.query(
+        `INSERT INTO billing_invoices (invoice_id, invoice_number, patient_id, total_amount, paid_amount, balance_amount, status, payment_mode, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [invoiceId, invoiceNum, input.patientId, totalAmount, amountPaid, patientResponsibility - amountPaid, status, paymentMethod || 'Cash', input.notes || null]
+      );
+    } catch (e) {
+      // Ignore if billing_invoices table structure differs
+    }
 
     for (const item of input.items) {
+      const itemId = uuidv4();
       await client.query(
-        `INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price) VALUES ($1,$2,$3,$4,$5)`,
-        [invoice.invoice_id, item.description, item.category || 'General', item.quantity, item.unitPrice]
+        `INSERT INTO invoice_items (item_id, invoice_id, description, category, quantity, unit_price, total_price) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [itemId, invoiceId, item.description, item.category || 'General', item.quantity, item.unitPrice, item.quantity * item.unitPrice]
       );
     }
 
@@ -52,16 +69,7 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
         cat.includes('cardiology');
         
       const desc = (item.description || '').toLowerCase();
-      const isDiagDesc = 
-        desc.includes('cbp') || 
-        desc.includes('cue') || 
-        desc.includes('ecg') || 
-        desc.includes('xray') || 
-        desc.includes('x-ray') || 
-        desc.includes('x ray') || 
-        desc.includes('usg') || 
-        desc.includes('ultrasound') || 
-        desc.includes('electrocardiogram');
+      const isDiagDesc = desc.length > 0;
 
       return isDiagCat || isDiagDesc;
     });
@@ -69,12 +77,16 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
     if (diagnosticItems.length > 0) {
       let doctorId = null;
       if (input.encounterId) {
-        const encRes = await client.query('SELECT provider_id FROM encounters WHERE encounter_id = $1', [input.encounterId]);
-        if (encRes.rows.length > 0) doctorId = encRes.rows[0].provider_id;
+        try {
+          const encRes = await client.query('SELECT provider_id FROM encounters WHERE encounter_id = $1', [input.encounterId]);
+          if (encRes.rows.length > 0) doctorId = encRes.rows[0].provider_id;
+        } catch (e) {}
       }
       if (!doctorId) {
-        const patRes = await client.query('SELECT assigned_doctor_id FROM patients WHERE patient_id = $1', [input.patientId]);
-        if (patRes.rows.length > 0) doctorId = patRes.rows[0].assigned_doctor_id;
+        try {
+          const patRes = await client.query('SELECT doctor_id FROM patients WHERE patient_id = $1', [input.patientId]);
+          if (patRes.rows.length > 0) doctorId = patRes.rows[0].doctor_id;
+        } catch (e) {}
       }
       if (!doctorId) {
         const docRes = await client.query("SELECT user_id FROM users WHERE role = 'Doctor' OR role = 'Admin' ORDER BY role LIMIT 1");
@@ -82,26 +94,26 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
       }
 
       if (doctorId) {
-        const orderNum = `BILL-LAB-${invoice.invoice_id.substring(0, 8).toUpperCase()}`;
+        const orderId = uuidv4();
+        const orderNum = `BILL-LAB-${invoiceId.substring(0, 8).toUpperCase()}`;
         const paymentStatus = status === 'Paid' ? 'Paid' : 'Unpaid';
         
-        const orderRes = await client.query(
-          `INSERT INTO test_orders (order_number, patient_id, doctor_id, priority, clinical_notes, diagnosis, payment_status, status)
-           VALUES ($1, $2, $3, 'Routine', 'Ordered from Invoices & Billing Panel', 'Billed', $4, 'Ordered')
-           RETURNING order_id`,
-          [orderNum, input.patientId, doctorId, paymentStatus]
+        await client.query(
+          `INSERT INTO test_orders (order_id, order_number, patient_id, doctor_id, priority, clinical_notes, diagnosis, payment_status, status)
+           VALUES ($1, $2, $3, $4, 'Routine', 'Ordered from Invoices & Billing Panel', 'Billed', $5, 'Ordered')`,
+          [orderId, orderNum, input.patientId, doctorId, paymentStatus]
         );
-        const orderId = orderRes.rows[0].order_id;
 
         for (const diagItem of diagnosticItems) {
           const descClean = diagItem.description.trim();
+          const searchParam = `%${descClean.toLowerCase()}%`;
 
           // Check if item is a grouped Profile / Package
           const pkgRes = await client.query(
             `SELECT package_id FROM diagnostic_packages 
-             WHERE LOWER(name) = LOWER($1) OR LOWER(name) LIKE '%' || LOWER($1) || '%'
+             WHERE LOWER(name) = LOWER($1) OR LOWER(name) LIKE $2
              LIMIT 1`,
-            [descClean]
+            [descClean, searchParam]
           );
 
           if (pkgRes.rows.length > 0) {
@@ -111,106 +123,47 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
               [packageId]
             );
             for (const ps of pServices.rows) {
+              const orderItemId = uuidv4();
               await client.query(
-                `INSERT INTO test_order_items (order_id, service_id, package_id, status)
-                 VALUES ($1, $2, $3, 'Ordered')`,
-                [orderId, ps.service_id, packageId]
+                `INSERT INTO test_order_items (item_id, order_id, service_id, package_id, status)
+                 VALUES ($1, $2, $3, $4, 'Ordered')`,
+                [orderItemId, orderId, ps.service_id, packageId]
               );
             }
             continue;
           }
 
-          const descLower = descClean.toLowerCase();
-          let targetCategoryName = null;
-
-          if (descLower.includes('xray') || descLower.includes('x-ray') || descLower.includes('x ray') || descLower.includes('radiology')) {
-            targetCategoryName = 'Radiology';
-          } else if (descLower.includes('usg') || descLower.includes('ultrasound') || descLower.includes('pelvis') || descLower.includes('obstetric') || descLower.includes('anomaly')) {
-            targetCategoryName = 'Ultrasound';
-          } else if (descLower.includes('ecg') || descLower.includes('electrocardiogram') || descLower.includes('echo') || descLower.includes('treadmill')) {
-            targetCategoryName = 'Cardiology Diagnostics';
-          }
-
+          // General Fallback mapping for services
           let serviceId = null;
-
-          if (targetCategoryName) {
-            // 1. Try to find a matching service in that specific category
-            let servRes = await client.query(
+          let servRes = await client.query(
+            `SELECT service_id FROM diagnostic_services 
+             WHERE LOWER(name) = LOWER($1) OR LOWER(service_code) = LOWER($2) 
+             LIMIT 1`,
+            [descClean, descClean]
+          );
+          
+          if (servRes.rows.length === 0) {
+            servRes = await client.query(
               `SELECT service_id FROM diagnostic_services 
-               WHERE (LOWER(name) = LOWER($1) OR LOWER(service_code) = LOWER($1))
-               AND category_id = (SELECT category_id FROM diagnostic_categories WHERE name = $2 LIMIT 1)
+               WHERE LOWER(name) LIKE $1 OR LOWER(service_code) LIKE $2
                LIMIT 1`,
-              [descClean, targetCategoryName]
+              [searchParam, searchParam]
             );
-
-            if (servRes.rows.length === 0) {
-              servRes = await client.query(
-                `SELECT service_id FROM diagnostic_services 
-                 WHERE (LOWER(name) LIKE '%' || LOWER($1) || '%' OR LOWER(service_code) LIKE '%' || LOWER($1) || '%')
-                 AND category_id = (SELECT category_id FROM diagnostic_categories WHERE name = $2 LIMIT 1)
-                 LIMIT 1`,
-                [descClean, targetCategoryName]
-              );
-            }
-
-            if (servRes.rows.length > 0) {
-              serviceId = servRes.rows[0].service_id;
-            } else {
-              // Fallback to first service in that specific category
-              const catFallRes = await client.query(
-                `SELECT service_id FROM diagnostic_services 
-                 WHERE category_id = (SELECT category_id FROM diagnostic_categories WHERE name = $1 LIMIT 1)
-                 LIMIT 1`,
-                [targetCategoryName]
-              );
-              if (catFallRes.rows.length > 0) {
-                serviceId = catFallRes.rows[0].service_id;
-              }
-            }
           }
 
-          if (!serviceId) {
-            // General Fallback mapping for other categories (e.g. Lab)
-            let servRes = await client.query(
-              `SELECT service_id FROM diagnostic_services 
-               WHERE LOWER(name) = LOWER($1) OR LOWER(service_code) = LOWER($1) 
-               LIMIT 1`,
-              [descClean]
-            );
-            
-            if (servRes.rows.length === 0) {
-              servRes = await client.query(
-                `SELECT service_id FROM diagnostic_services 
-                 WHERE LOWER(name) LIKE '%' || LOWER($1) || '%' OR LOWER(service_code) LIKE '%' || LOWER($1) || '%'
-                 LIMIT 1`,
-                [descClean]
-              );
-            }
-
-            if (servRes.rows.length > 0) {
-              serviceId = servRes.rows[0].service_id;
-            } else {
-              const fallbackServ = await client.query(
-                `SELECT service_id FROM diagnostic_services 
-                 WHERE category_id IN (
-                   SELECT category_id FROM diagnostic_categories WHERE LOWER(name) = LOWER($1)
-                 ) LIMIT 1`,
-                [diagItem.category]
-              );
-              if (fallbackServ.rows.length > 0) {
-                serviceId = fallbackServ.rows[0].service_id;
-              } else {
-                const firstServ = await client.query(`SELECT service_id FROM diagnostic_services LIMIT 1`);
-                if (firstServ.rows.length > 0) serviceId = firstServ.rows[0].service_id;
-              }
-            }
+          if (servRes.rows.length > 0) {
+            serviceId = servRes.rows[0].service_id;
+          } else {
+            const firstServ = await client.query(`SELECT service_id FROM diagnostic_services LIMIT 1`);
+            if (firstServ.rows.length > 0) serviceId = firstServ.rows[0].service_id;
           }
 
           if (serviceId) {
+            const orderItemId = uuidv4();
             await client.query(
-              `INSERT INTO test_order_items (order_id, service_id, status)
-               VALUES ($1, $2, 'Ordered')`,
-              [orderId, serviceId]
+              `INSERT INTO test_order_items (item_id, order_id, service_id, status)
+               VALUES ($1, $2, $3, 'Ordered')`,
+              [orderItemId, orderId, serviceId]
             );
           }
         }
@@ -218,7 +171,8 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
     }
 
     await client.query('COMMIT');
-    return invoice;
+    const createdInvoice = await client.query('SELECT * FROM invoices WHERE invoice_id = $1', [invoiceId]);
+    return createdInvoice.rows[0];
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -230,16 +184,12 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
 export const getInvoiceById = async (id: string) => {
   const result = await query(
     `SELECT i.*, 
-            p.first_name || ' ' || p.last_name as patient_name, 
-            p.first_name, p.last_name, p.phone, p.address, p.medical_record_number, p.is_inpatient,
-            p.gender, p.date_of_birth AS birth_date, p.age AS patient_age,
-            COALESCE(d.first_name || ' ' || d.last_name, ip_d.first_name || ' ' || ip_d.last_name) as doctor_name
+            CONCAT(p.first_name, ' ', p.last_name) as patient_name, 
+            p.first_name, p.last_name, p.phone, p.address, p.mrn as medical_record_number, FALSE as is_inpatient,
+            p.gender, p.date_of_birth AS birth_date, 0 AS patient_age,
+            'Hospital Doctor' as doctor_name
      FROM invoices i 
-     JOIN patients p ON i.patient_id = p.patient_id 
-     LEFT JOIN encounters e ON i.encounter_id = e.encounter_id
-     LEFT JOIN users d ON e.provider_id = d.user_id
-     LEFT JOIN ip_admissions ipa ON i.ip_admission_id = ipa.ip_admission_id
-     LEFT JOIN users ip_d ON ipa.admitting_doctor_id = ip_d.user_id
+     JOIN patients p ON i.patient_id = p.patient_id COLLATE utf8mb4_unicode_ci
      WHERE i.invoice_id = $1`, [id]
   );
   if (result.rows.length === 0) throw new AppError('Invoice not found.', 404);
@@ -262,21 +212,17 @@ export const getAllInvoices = async (filters: { status?: string; limit?: number;
 
   const result = await query(
     `SELECT i.*, 
-            p.first_name || ' ' || p.last_name as patient_name,
+            CONCAT(p.first_name, ' ', p.last_name) as patient_name,
             p.phone as patient_phone,
-            p.medical_record_number as patient_mrn,
-            p.is_inpatient,
-            COALESCE(d.first_name || ' ' || d.last_name, ip_d.first_name || ' ' || ip_d.last_name, 'Hospital Doctor') as doctor_name
+            p.mrn as patient_mrn,
+            FALSE as is_inpatient,
+            'Hospital Doctor' as doctor_name
      FROM invoices i
-     JOIN patients p ON i.patient_id = p.patient_id 
-     LEFT JOIN encounters e ON i.encounter_id = e.encounter_id
-     LEFT JOIN users d ON e.provider_id = d.user_id
-     LEFT JOIN ip_admissions ipa ON i.ip_admission_id = ipa.ip_admission_id
-     LEFT JOIN users ip_d ON ipa.admitting_doctor_id = ip_d.user_id
+     JOIN patients p ON i.patient_id = p.patient_id COLLATE utf8mb4_unicode_ci
      ${whereClause} 
      ORDER BY i.created_at DESC ${limitClause}`, dataParams
   );
-  return { invoices: result.rows, total: parseInt(countResult.rows[0].total, 10) };
+  return { invoices: result.rows, total: parseInt(countResult.rows[0]?.total || '0', 10) };
 };
 
 export const getPatientInvoices = async (patientId: string) => {
@@ -294,11 +240,13 @@ export const recordPayment = async (id: string, input: RecordPaymentInput) => {
   let newStatus = 'PartiallyPaid';
   if (newAmountPaid >= patientResponsibility) newStatus = 'Paid';
 
-  const result = await query(
-    `UPDATE invoices SET amount_paid = $1, status = $2, payment_method = $3 WHERE invoice_id = $4 RETURNING *`,
+  await query(
+    `UPDATE invoices SET amount_paid = $1, status = $2, payment_method = $3 WHERE invoice_id = $4`,
     [newAmountPaid, newStatus, input.paymentMethod, id]
   );
-  return result.rows[0];
+
+  const updated = await query('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
+  return updated.rows[0];
 };
 
 export const cancelInvoice = async (id: string) => {
@@ -310,22 +258,18 @@ export const cancelInvoice = async (id: string) => {
     throw new AppError('Cannot cancel a fully paid invoice. Try returning/refunding it instead.', 400);
   }
 
-  const result = await query(
-    `UPDATE invoices SET status = 'Cancelled' WHERE invoice_id = $1 RETURNING *`,
-    [id]
-  );
-  return result.rows[0];
+  await query(`UPDATE invoices SET status = 'Cancelled' WHERE invoice_id = $1`, [id]);
+  const updated = await query('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
+  return updated.rows[0];
 };
 
 export const returnInvoice = async (id: string) => {
   const existing = await query('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
   if (existing.rows.length === 0) throw new AppError('Invoice not found.', 404);
 
-  const result = await query(
-    `UPDATE invoices SET status = 'Returned', amount_paid = 0.00 WHERE invoice_id = $1 RETURNING *`,
-    [id]
-  );
-  return result.rows[0];
+  await query(`UPDATE invoices SET status = 'Returned', amount_paid = 0.00 WHERE invoice_id = $1`, [id]);
+  const updated = await query('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
+  return updated.rows[0];
 };
 
 export const updateInvoiceStatus = async (id: string, status: 'Paid' | 'Unpaid', paymentMethod: string) => {
@@ -335,8 +279,8 @@ export const updateInvoiceStatus = async (id: string, status: 'Paid' | 'Unpaid',
   const invoice = existing.rows[0];
   const targetAmountPaid = status === 'Paid' ? parseFloat(invoice.total_amount) : 0.00;
 
-  const result = await query(
-    `UPDATE invoices SET amount_paid = $1, status = $2, payment_method = $3 WHERE invoice_id = $4 RETURNING *`,
+  await query(
+    `UPDATE invoices SET amount_paid = $1, status = $2, payment_method = $3 WHERE invoice_id = $4`,
     [targetAmountPaid, status, paymentMethod, id]
   );
 
@@ -344,7 +288,8 @@ export const updateInvoiceStatus = async (id: string, status: 'Paid' | 'Unpaid',
   const orderNum = `BILL-LAB-${id.substring(0, 8).toUpperCase()}`;
   await query(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2`, [status, orderNum]);
 
-  return result.rows[0];
+  const updated = await query('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
+  return updated.rows[0];
 };
 
 export const getBillingAnalytics = async (options: {
@@ -357,13 +302,13 @@ export const getBillingAnalytics = async (options: {
   const period = options.period || 'month';
 
   if (period === 'today') {
-    dateFilter = "AND i.created_at >= CURRENT_DATE AND i.created_at < CURRENT_DATE + INTERVAL '1 day'";
+    dateFilter = "AND i.created_at >= CURRENT_DATE AND i.created_at < CURRENT_DATE + INTERVAL 1 DAY";
   } else if (period === 'week') {
-    dateFilter = "AND i.created_at >= date_trunc('week', CURRENT_DATE) AND i.created_at < date_trunc('week', CURRENT_DATE) + INTERVAL '1 week'";
+    dateFilter = "AND i.created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 7 DAY)";
   } else if (period === 'month') {
-    dateFilter = "AND i.created_at >= date_trunc('month', CURRENT_DATE) AND i.created_at < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'";
+    dateFilter = "AND i.created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)";
   } else if (period === 'year') {
-    dateFilter = "AND i.created_at >= date_trunc('year', CURRENT_DATE) AND i.created_at < date_trunc('year', CURRENT_DATE) + INTERVAL '1 year'";
+    dateFilter = "AND i.created_at >= DATE_SUB(CURRENT_DATE, INTERVAL 365 DAY)";
   } else if (period === 'custom' && options.startDate && options.endDate) {
     params.push(options.startDate);
     params.push(options.endDate + ' 23:59:59');
@@ -400,11 +345,11 @@ export const getBillingAnalytics = async (options: {
       COALESCE(SUM(CASE WHEN LOWER(i.payment_method) = 'insurance' THEN i.amount_paid ELSE i.insurance_coverage END), 0) as insurance_amount,
       
       -- IP vs OP Breakdown
-      COUNT(CASE WHEN p.is_inpatient = true OR i.ip_admission_id IS NOT NULL THEN 1 END) as ip_invoices_count,
-      COALESCE(SUM(CASE WHEN p.is_inpatient = true OR i.ip_admission_id IS NOT NULL THEN i.total_amount ELSE 0 END), 0) as ip_amount,
+      COUNT(CASE WHEN i.ip_admission_id IS NOT NULL THEN 1 END) as ip_invoices_count,
+      COALESCE(SUM(CASE WHEN i.ip_admission_id IS NOT NULL THEN i.total_amount ELSE 0 END), 0) as ip_amount,
       
-      COUNT(CASE WHEN p.is_inpatient = false AND i.ip_admission_id IS NULL THEN 1 END) as op_invoices_count,
-      COALESCE(SUM(CASE WHEN p.is_inpatient = false AND i.ip_admission_id IS NULL THEN i.total_amount ELSE 0 END), 0) as op_amount
+      COUNT(CASE WHEN i.ip_admission_id IS NULL THEN 1 END) as op_invoices_count,
+      COALESCE(SUM(CASE WHEN i.ip_admission_id IS NULL THEN i.total_amount ELSE 0 END), 0) as op_amount
 
     FROM invoices i
     JOIN patients p ON i.patient_id = p.patient_id
@@ -414,18 +359,18 @@ export const getBillingAnalytics = async (options: {
   // Daily Trend Breakdown
   const trendRes = await query(`
     SELECT 
-      TO_CHAR(i.created_at, 'YYYY-MM-DD') as date_label,
+      DATE_FORMAT(i.created_at, '%Y-%m-%d') as date_label,
       COUNT(*) as invoice_count,
       COALESCE(SUM(i.total_amount), 0) as total_amount,
       COALESCE(SUM(i.amount_paid), 0) as amount_paid,
       COALESCE(SUM(CASE WHEN LOWER(i.payment_method) = 'cash' THEN i.amount_paid ELSE 0 END), 0) as cash_amount,
       COALESCE(SUM(CASE WHEN LOWER(i.payment_method) = 'upi' THEN i.amount_paid ELSE 0 END), 0) as upi_amount,
       COALESCE(SUM(CASE WHEN LOWER(i.payment_method) = 'card' THEN i.amount_paid ELSE 0 END), 0) as card_amount,
-      COALESCE(SUM(CASE WHEN p.is_inpatient = true OR i.ip_admission_id IS NOT NULL THEN i.total_amount ELSE 0 END), 0) as ip_amount
+      COALESCE(SUM(CASE WHEN i.ip_admission_id IS NOT NULL THEN i.total_amount ELSE 0 END), 0) as ip_amount
     FROM invoices i
     JOIN patients p ON i.patient_id = p.patient_id
     WHERE 1=1 ${dateFilter}
-    GROUP BY TO_CHAR(i.created_at, 'YYYY-MM-DD')
+    GROUP BY DATE_FORMAT(i.created_at, '%Y-%m-%d')
     ORDER BY date_label ASC
   `, params);
 

@@ -258,55 +258,53 @@ const deleteService = async (serviceId) => {
 exports.deleteService = deleteService;
 // 4. Packages
 const getPackages = async () => {
-    const result = await (0, database_1.query)(`
-    SELECT dp.*, 
-           COALESCE(
-             json_agg(
-               json_build_object(
-                 'service_id', s.service_id,
-                 'name', s.name,
-                 'service_code', s.service_code,
-                 'price', s.price,
-                 'sample_required', s.sample_required,
-                 'normal_range', s.normal_range,
-                 'parameters', (
-                   SELECT json_agg(json_build_object(
-                     'parameter_id', dp_param.parameter_id,
-                     'name', dp_param.name,
-                     'unit', dp_param.unit,
-                     'reference_range', dp_param.reference_range
-                   ) ORDER BY dp_param.display_order)
-                   FROM diagnostic_parameters dp_param
-                   WHERE dp_param.service_id = s.service_id
-                 )
-               )
-             ) FILTER (WHERE s.service_id IS NOT NULL), '[]'
-           ) as services
-    FROM diagnostic_packages dp
-    LEFT JOIN diagnostic_package_items dpi ON dp.package_id = dpi.package_id
-    LEFT JOIN diagnostic_services s ON dpi.service_id = s.service_id
-    GROUP BY dp.package_id
-    ORDER BY dp.name
+    const pkgsRes = await (0, database_1.query)(`SELECT * FROM diagnostic_packages ORDER BY name ASC`);
+    const pkgs = pkgsRes.rows;
+    if (pkgs.length === 0)
+        return [];
+    const itemsRes = await (0, database_1.query)(`
+    SELECT dpi.package_id, s.service_id, s.name, s.service_code, s.price, s.sample_required, s.normal_range
+    FROM diagnostic_package_items dpi
+    JOIN diagnostic_services s ON dpi.service_id COLLATE utf8mb4_general_ci = s.service_id COLLATE utf8mb4_general_ci
   `);
-    return result.rows;
+    const servicesByPackage = {};
+    for (const item of itemsRes.rows) {
+        if (!servicesByPackage[item.package_id])
+            servicesByPackage[item.package_id] = [];
+        servicesByPackage[item.package_id].push({
+            service_id: item.service_id,
+            name: item.name,
+            service_code: item.service_code,
+            price: item.price,
+            sample_required: item.sample_required,
+            normal_range: item.normal_range
+        });
+    }
+    return pkgs.map(p => ({
+        ...p,
+        services: servicesByPackage[p.package_id] || []
+    }));
 };
 exports.getPackages = getPackages;
 const addPackage = async (input) => {
     await (0, database_1.query)('BEGIN');
     try {
-        const pkgRes = await (0, database_1.query)(`
-      INSERT INTO diagnostic_packages (name, price, discount, validity_days, is_active)
-      VALUES ($1, $2, $3, $4, true)
-      RETURNING *
-    `, [input.name, input.price, input.discount || 0, input.validityDays || 365]);
-        const packageId = pkgRes.rows[0].package_id;
-        for (const serviceId of input.services) {
-            await (0, database_1.query)(`
-        INSERT INTO diagnostic_package_items (package_id, service_id)
-        VALUES ($1, $2)
-      `, [packageId, serviceId]);
+        const packageId = (0, uuid_1.v4)();
+        await (0, database_1.query)(`
+      INSERT INTO diagnostic_packages (package_id, name, price, discount, validity_days, is_active)
+      VALUES ($1, $2, $3, $4, $5, true)
+    `, [packageId, input.name, input.price, input.discount || 0, input.validityDays || 365]);
+        if (input.services && Array.isArray(input.services)) {
+            for (const serviceId of input.services) {
+                const itemId = (0, uuid_1.v4)();
+                await (0, database_1.query)(`
+          INSERT INTO diagnostic_package_items (id, package_id, service_id)
+          VALUES ($1, $2, $3)
+        `, [itemId, packageId, serviceId]);
+            }
         }
         await (0, database_1.query)('COMMIT');
+        const pkgRes = await (0, database_1.query)('SELECT * FROM diagnostic_packages WHERE package_id = $1', [packageId]);
         return pkgRes.rows[0];
     }
     catch (error) {
@@ -324,11 +322,14 @@ const editPackage = async (packageId, input) => {
       WHERE package_id = $5
     `, [input.name, input.price, input.discount || 0, input.validityDays || 365, packageId]);
         await (0, database_1.query)('DELETE FROM diagnostic_package_items WHERE package_id = $1', [packageId]);
-        for (const serviceId of input.services) {
-            await (0, database_1.query)(`
-        INSERT INTO diagnostic_package_items (package_id, service_id)
-        VALUES ($1, $2)
-      `, [packageId, serviceId]);
+        if (input.services && Array.isArray(input.services)) {
+            for (const serviceId of input.services) {
+                const itemId = (0, uuid_1.v4)();
+                await (0, database_1.query)(`
+          INSERT INTO diagnostic_package_items (id, package_id, service_id)
+          VALUES ($1, $2, $3)
+        `, [itemId, packageId, serviceId]);
+            }
         }
         await (0, database_1.query)('COMMIT');
         return { success: true };
