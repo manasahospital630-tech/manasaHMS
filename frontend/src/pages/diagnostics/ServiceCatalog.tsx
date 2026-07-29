@@ -16,7 +16,7 @@ export const ServiceCatalog: React.FC = () => {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'services' | 'packages' | 'reports'>('services');
   const [dueAlertOpen, setDueAlertOpen] = useState(false);
-  const [dueAlertData, setDueAlertData] = useState<{ patientName: string; dueAmount: number; invoiceId?: string } | null>(null);
+  const [dueAlertData, setDueAlertData] = useState<{ patientName: string; dueAmount: number; invoiceId?: string; orderNumber?: string } | null>(null);
   const [expandedPackages, setExpandedPackages] = useState<Record<string, boolean>>({});
 
   // Search & Filter States
@@ -387,7 +387,8 @@ export const ServiceCatalog: React.FC = () => {
       setDueAlertData({
         patientName: item.patient_name || item.order?.patient_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Patient',
         dueAmount: dueAmt,
-        invoiceId: item.invoice_id || item.order?.invoice_id
+        invoiceId: item.invoice_id || item.order?.invoice_id,
+        orderNumber: item.order_number || item.order?.order_number
       });
       setDueAlertOpen(true);
       return;
@@ -2717,7 +2718,7 @@ export const ServiceCatalog: React.FC = () => {
 
             <div style={{ padding: '24px' }}>
               <p style={{ fontSize: '14px', color: 'var(--text-primary)', margin: 0, lineHeight: 1.6 }}>
-                Payment Pending: Please collect the pending due amount (<strong>₹{dueAlertData.dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>) before printing the report.
+                Payment Pending for Invoice <strong>#{dueAlertData.invoiceId || dueAlertData.orderNumber || 'PENDING'}</strong>: Please collect the remaining due balance of <strong>₹{dueAlertData.dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong> to print this report.
               </p>
 
               <div style={{

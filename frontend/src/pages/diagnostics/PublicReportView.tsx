@@ -815,7 +815,7 @@ export const PublicReportView: React.FC = () => {
 
             <div style={{ padding: '24px' }}>
               <p style={{ fontSize: '14px', color: 'var(--text-primary)', margin: 0, lineHeight: 1.6 }}>
-                Payment Pending: Please collect the pending due amount (<strong>₹{dueAlertData.dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>) before printing the report.
+                Payment Pending for Invoice <strong>#{dueAlertData.invoiceId || 'PENDING'}</strong>: Please collect the remaining due balance of <strong>₹{dueAlertData.dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong> to print this report.
               </p>
 
               <div style={{
