@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Beaker, Layers, Plus, Edit, Trash2, X, RefreshCw, Info, CheckCircle, Printer, Search, List, Eye } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Beaker, Layers, Plus, Edit, Trash2, X, RefreshCw, Info, CheckCircle, Printer, Search, List, Eye, AlertTriangle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import api from '../../api/client';
@@ -7,12 +8,15 @@ import { getHospitalLogoHtml, getQrCodeHeaderSyncHtml } from '../../utils/logoHe
 import { resolvePatientReferenceRange } from '../../utils/referenceRangeResolver';
 
 export const ServiceCatalog: React.FC = () => {
+  const navigate = useNavigate();
   const [categories, setCategories] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [packages, setPackages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'services' | 'packages' | 'reports'>('services');
+  const [dueAlertOpen, setDueAlertOpen] = useState(false);
+  const [dueAlertData, setDueAlertData] = useState<{ patientName: string; dueAmount: number; invoiceId?: string } | null>(null);
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -316,7 +320,32 @@ export const ServiceCatalog: React.FC = () => {
   };
 
   const handlePrintReport = (item: any) => {
-    const isLab = item.category_name === 'Laboratory';
+    // 1. OP Patient Due Payment Check
+    const isOpPatient = (item.patient_type || item.patientType || item.order?.patient_type || 'OP').toUpperCase() === 'OP';
+    const dueAmt = parseFloat(item.due_amount !== undefined ? item.due_amount : (item.order?.due_amount || 0));
+
+    if (isOpPatient && dueAmt > 0) {
+      setDueAlertData({
+        patientName: item.patient_name || item.order?.patient_name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Patient',
+        dueAmount: dueAmt,
+        invoiceId: item.invoice_id || item.order?.invoice_id
+      });
+      setDueAlertOpen(true);
+      return;
+    }
+
+    // 2. Dynamic Report Layout Evaluation
+    const hasStructuredParameters = Boolean(
+      (item.result_parameters && item.result_parameters.length > 0) ||
+      (item.parameters && item.parameters.length > 0) ||
+      (item.lab_result && item.lab_result.actual_result && item.lab_result.actual_result !== 'Multiple Values' && item.lab_result.actual_result !== '—') ||
+      (item.package_items && item.package_items.some((pi: any) => 
+        (pi.result_parameters && pi.result_parameters.length > 0) || 
+        (pi.parameters && pi.parameters.length > 0) || 
+        (pi.lab_result && pi.lab_result.actual_result)
+      ))
+    );
+
     const hospitalName = hospitalSettings?.hospital_name || 'Manasa Hospital';
     const hospitalAddress = hospitalSettings?.hospital_address || 'Market Lane, Narsingi, Gandipet Mandal Rangareddy Dist - 500089.';
     const phoneNumber = hospitalSettings?.phone_number || 'Ph: 7386301348';
@@ -334,7 +363,6 @@ export const ServiceCatalog: React.FC = () => {
 
     const printWindow = window.open('', '_blank');
     if (printWindow) {
-
       const headerHtml = printMode === 'letterhead'
         ? `<table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
              <tr>
@@ -377,10 +405,70 @@ export const ServiceCatalog: React.FC = () => {
         return `${years} Years`;
       };
 
-      const ageStr = getAgeStr(item.patient_birth_date, item.patient_age || item.age);
-      const dateObj = new Date(item.created_at);
+      const dateObj = new Date(item.created_at || Date.now());
       const pad = (n: number) => n.toString().padStart(2, '0');
       const formattedDate = `${pad(dateObj.getDate())}-${pad(dateObj.getMonth() + 1)}-${dateObj.getFullYear()} ${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())} ${dateObj.getHours() >= 12 ? 'PM' : 'AM'}`;
+
+      const patientName = item.patient_name || (item.order?.first_name ? `${item.order?.first_name || ''} ${item.order?.last_name || ''}`.trim() : (item.first_name ? `${item.first_name} ${item.last_name || ''}`.trim() : '—'));
+      const patientMrn = item.patient_mrn || item.order?.medical_record_number || item.medical_record_number || '—';
+      const patientAge = getAgeStr(item.patient_birth_date || item.order?.birth_date, item.patient_age || item.order?.patient_age);
+      const patientGender = item.patient_gender || item.order?.gender || '—';
+      const doctorName = item.doctor_name || (item.order?.doc_first ? `Dr. ${item.order.doc_first} ${item.order.doc_last || ''}`.trim() : 'Self / General');
+      const verifiedBy = item.verification?.verified_by_name || 'Dr. Pathologist M.D.';
+      const verifiedDate = item.verification?.verified_at 
+        ? new Date(item.verification.verified_at).toLocaleDateString() + ' ' + new Date(item.verification.verified_at).toLocaleTimeString()
+        : formattedDate;
+
+      const patientCardHtml = `
+        <div style="background: #ffffff; border: 1.5px solid #0f172a; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <tr>
+              <td style="padding: 2px 0; width: 50%;"><strong>Patient Name:</strong> ${patientName.toUpperCase()}</td>
+              <td style="padding: 2px 0; width: 50%;"><strong>MRN / Patient ID:</strong> ${patientMrn}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 0;"><strong>Age / Gender:</strong> ${patientAge} / ${patientGender}</td>
+              <td style="padding: 2px 0;"><strong>Ref. Doctor:</strong> ${doctorName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 0;"><strong>Order / Sample ID:</strong> ${item.order_number || item.item_id?.substring(0, 8) || '—'}</td>
+              <td style="padding: 2px 0;"><strong>Report Date:</strong> ${verifiedDate}</td>
+            </tr>
+          </table>
+        </div>
+      `;
+
+      const deptTitle = item.category_name || 'DIAGNOSTIC LABORATORY REPORT';
+      const signatureHtml = `
+        <div style="margin-top: 45px; display: flex; justify-content: space-between; align-items: flex-end; page-break-inside: avoid; break-inside: avoid;">
+          <div style="text-align: center; width: 200px;">
+            <div style="height: 35px; display: flex; align-items: center; justify-content: center;">
+              <span style="font-family: 'Brush Script MT', cursive, sans-serif; font-size: 18px; color: #1e3a8a; font-weight: bold;">Lab Tech</span>
+            </div>
+            <div style="border-top: 1px solid #0f172a; padding-top: 4px; font-weight: 700; font-size: 11px; color: #0f172a;">
+              Medical Lab Technician
+            </div>
+            <div style="font-size: 10px; color: #64748b;">
+              DMLT / B.Sc MLT
+            </div>
+          </div>
+
+          <div style="text-align: center; width: 220px;">
+            <div style="height: 35px; display: flex; align-items: center; justify-content: center;">
+              <span style="font-family: 'Brush Script MT', cursive, sans-serif; font-size: 20px; color: #1e3a8a; font-weight: bold;">${verifiedBy}</span>
+            </div>
+            <div style="border-top: 1px solid #0f172a; padding-top: 4px; font-weight: 700; font-size: 11px; color: #0f172a;">
+              ${verifiedBy}
+            </div>
+            <div style="font-size: 10px; color: #64748b;">
+              Consultant Pathologist
+            </div>
+          </div>
+        </div>
+        <div style="text-align: center; font-size: 10px; color: #64748b; margin-top: 15px; font-weight: bold; letter-spacing: 2px; page-break-inside: avoid; break-inside: avoid;">
+          *** END OF REPORT ***
+        </div>
+      `;
 
       const parseConcatenatedResult = (actualResult: string) => {
         if (!actualResult || !actualResult.includes(':')) return null;
@@ -408,117 +496,23 @@ export const ServiceCatalog: React.FC = () => {
 
       const checkIsAbnormal = (valStr: string, rangeStr: string): boolean => {
         if (!valStr || !rangeStr || rangeStr === '—') return false;
-        
-        const valClean = valStr.trim();
-        const rangeClean = rangeStr.replace(/\s+/g, ' ').trim();
-
-        // Handle titer comparisons (e.g. 1:160 and <1:80)
-        if (valClean.includes(':') && rangeClean.includes(':')) {
-          const valParts = valClean.split(':');
-          const valTiter = parseFloat(valParts[1]);
-          if (!isNaN(valTiter)) {
-            if (rangeClean.startsWith('<')) {
-              const limitParts = rangeClean.substring(1).trim().split(':');
-              const limitTiter = parseFloat(limitParts[1]);
-              if (!isNaN(limitTiter)) {
-                return valTiter >= limitTiter;
-              }
-            }
-            if (rangeClean.startsWith('>')) {
-              const limitParts = rangeClean.substring(1).trim().split(':');
-              const limitTiter = parseFloat(limitParts[1]);
-              if (!isNaN(limitTiter)) {
-                return valTiter <= limitTiter;
-              }
-            }
-          }
-        }
-        
-        const val = parseFloat(valClean);
-        if (isNaN(val)) return false;
-
-        const cleanRange = rangeClean;
-
-        try {
-          if (cleanRange.includes('-')) {
-            const parts = cleanRange.split('-');
-            if (parts.length === 2) {
-              const min = parseFloat(parts[0].trim());
-              const max = parseFloat(parts[1].trim());
-              if (!isNaN(min) && !isNaN(max)) {
-                return val < min || val > max;
-              }
-            }
-          }
-          if (cleanRange.includes('–')) {
-            const parts = cleanRange.split('–');
-            if (parts.length === 2) {
-              const min = parseFloat(parts[0].trim());
-              const max = parseFloat(parts[1].trim());
-              if (!isNaN(min) && !isNaN(max)) {
-                return val < min || val > max;
-              }
-            }
-          }
-          if (cleanRange.startsWith('<')) {
-            const limit = parseFloat(cleanRange.substring(1).trim());
-            if (!isNaN(limit)) {
-              return val >= limit;
-            }
-          }
-          if (cleanRange.startsWith('>')) {
-            const limit = parseFloat(cleanRange.substring(1).trim());
-            if (!isNaN(limit)) {
-              return val <= limit;
-            }
-          }
-        } catch (e) {
-          console.error(e);
+        const valNum = parseFloat(valStr);
+        if (isNaN(valNum)) return false;
+        const match = rangeStr.match(/([\d.]+)\s*-\s*([\d.]+)/);
+        if (match) {
+          const low = parseFloat(match[1]);
+          const high = parseFloat(match[2]);
+          return valNum < low || valNum > high;
         }
         return false;
       };
 
-      const refRanges: { [key: string]: string } = {
-        'HAEMOGLOBIN': '12.0 - 15.0 g/dL',
-        'TOTAL RBC COUNT': '3.8 - 4.8 X 10¹²/L',
-        'PCV / HCT': '36 - 46 %',
-        'MCV': '83 - 101 fl',
+      const refRanges: Record<string, string> = {
+        'HAEMOGLOBIN': '13.0 - 17.0 g/dL',
+        'PACKED CELL VOLUME (PCV)': '40 - 50 %',
+        'RBC COUNT': '4.5 - 5.5 mill/cu.mm',
+        'MCV': '83 - 101 fL',
         'MCH': '27 - 32 pg',
-        'MCHC': '31.5 - 34.5 g/dl',
-        'RDW': '11.5 - 13.5 %',
-        'TOTAL WBC COUNT': '4.0-10.0 X 10³/uL',
-        'PLATELET COUNT': '150 - 410 X 10³/uL',
-        'NEUTROPHILS': '2.0-7.5 X 10³/uL (40 - 80%)',
-        'LYMPHOCYTES': '1.0-4.0 X 10³/uL (20 - 40%)',
-        'MONOCYTES': '0.2-1.0 X 10³/uL (2 - 10%)',
-        'EOSINOPHILS': '0.02-0.5 X 10³/uL (1 - 6%)',
-        'BASOPHILS': '0.02 - 0.1 X 10³/uL (1 - 2%)',
-        'POLYMORPHS': '40 - 80 %',
-        'RBC MORPHOLOGY': 'Normocytic Normochromic',
-        'WBC ON SMEAR': 'Normal count & distribution',
-        'PLATELETS ON SMEAR': 'Adequate',
-        'COLOUR': 'PALE YELLOW',
-        'APPEARANCE': 'CLEAR',
-        'REACTION / PH': '4.6 - 8.0',
-        'SPECIFIC GRAVITY': '1.003 - 1.035',
-        'PROTEINS': 'NIL',
-        'GLUCOSE': 'NIL',
-        'BLOOD': 'NIL',
-        'KETONE BODIES': 'Negative',
-        'BILIRUBIN': 'Negative',
-        'UROBILINOGEN': 'Present in normal amount',
-        'NITRITE': 'Negative',
-        'PUS CELLS': '0 - 5 /HPF',
-        'EPITHELIAL CELLS': '0 - 8 /HPF',
-        'RBC': 'Nil',
-        'CASTS': 'Nil',
-        'CRYSTALS': 'Nil',
-        'OTHERS': 'Nil',
-        'ABSOLUTE EOSINOPHIL COUNT': '40-440 cells/µL',
-        'ACTIVATED PARTIAL THROMBOPLASTIN TIME': '25-35 sec',
-        'CONTROL': 'Laboratory Control',
-        'APTT RATIO': '0.8-1.2',
-        'ALKALINE PHOSPHATASE': '44-147 U/L',
         'ERYTHROCYTE SEDIMENTATION RATE': '0-15 (Male)',
         'RANDOM BLOOD SUGAR': '70-140 mg/dL',
         'FASTING BLOOD SUGAR': '70-99 mg/dL',
@@ -664,100 +658,11 @@ export const ServiceCatalog: React.FC = () => {
         'A/G RATIO': '1.0–2.2'
       };
 
-      const lr = item.lab_result || {};
-      let finalParameters = item.result_parameters || [];
-      if (isLab && (!finalParameters || finalParameters.length === 0) && lr.actual_result) {
-        const parsed = parseConcatenatedResult(lr.actual_result);
-        if (parsed) {
-          finalParameters = parsed.map((p: any, idx: number) => ({
-            parameter_id: `parsed-${idx}`,
-            parameter_name: p.name,
-            actual_value: p.value,
-            unit: p.unit,
-            reference_range: refRanges[p.name.toUpperCase()] || '',
-            status: 'Normal'
-          }));
-        }
-      }
-
-      // Determine department title for ALL test categories
-      const getDeptTitle = () => {
-        const catName = (item.category_name || '').toUpperCase();
-        const svcName = (item.service_name || '').toUpperCase();
-        if (catName === 'LABORATORY') {
-          if (svcName.includes('BLOOD') || svcName.includes('HEM') || svcName.includes('CBC') || svcName.includes('CBP')) return 'HAEMATOLOGY';
-          if (svcName.includes('URINE') || svcName.includes('CUE')) return 'CLINICAL PATHOLOGY';
-          return 'CLINICAL BIOCHEMISTRY';
-        }
-        if (catName.includes('RADIOLOGY')) return 'RADIOLOGY DEPARTMENT';
-        if (catName.includes('ULTRASOUND')) return 'ULTRASOUND / SONOGRAPHY DEPARTMENT';
-        if (catName.includes('CARDIOLOGY')) return 'CARDIOLOGY DEPARTMENT';
-        if (catName.includes('NEUROLOGY')) return 'NEUROLOGY DEPARTMENT';
-        return catName || 'DIAGNOSTICS DEPARTMENT';
-      };
-      const deptTitle = getDeptTitle();
-
-      const verifiedBy = item.verification?.verified_by_name || 'Dr. Priya Nair (Pathologist) M.D.';
-      const verifiedDate = item.verification?.verified_at 
-        ? new Date(item.verification.verified_at).toLocaleDateString() + ' ' + new Date(item.verification.verified_at).toLocaleTimeString()
-        : formattedDate;
-
-      const patientCardHtml = `
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11px; border-bottom: 2px solid #0f172a; padding-bottom: 6px;">
-          <tbody>
-            <tr>
-              <td style="padding: 3px 0; font-weight: 600; color: #475569; width: 15%;">Patient Name:</td>
-              <td style="padding: 3px 0; font-weight: 700; width: 35%; text-transform: uppercase;">${item.patient_name}</td>
-              <td style="padding: 3px 0; font-weight: 600; color: #475569; width: 15%;">Ref. Doctor:</td>
-              <td style="padding: 3px 0; font-weight: 700; width: 35%; text-transform: uppercase;">${item.doctor_name || 'Dr S Tarundas'}</td>
-            </tr>
-            <tr>
-              <td style="padding: 3px 0; font-weight: 600; color: #475569;">Patient Id:</td>
-              <td style="padding: 3px 0; font-weight: 700;">${item.patient_mrn}</td>
-              <td style="padding: 3px 0; font-weight: 600; color: #475569;">Lab Id:</td>
-              <td style="padding: 3px 0; font-weight: 700;">${item.item_id.substring(0, 8).toUpperCase()}</td>
-            </tr>
-            <tr>
-              <td style="padding: 3px 0; font-weight: 600; color: #475569;">OP Id:</td>
-              <td style="padding: 3px 0; font-weight: 700;">${item.order_number || 'HY-SVN-1225-00080'}</td>
-              <td style="padding: 3px 0; font-weight: 600; color: #475569;">Sample Collection Date:</td>
-              <td style="padding: 3px 0; font-weight: 700;">${formattedDate}</td>
-            </tr>
-            <tr>
-              <td style="padding: 3px 0; font-weight: 600; color: #475569;">Age/Gender:</td>
-              <td style="padding: 3px 0; font-weight: 700;">${ageStr} / ${(item.patient_gender || item.gender || 'Male').toUpperCase()}</td>
-              <td style="padding: 3px 0; font-weight: 600; color: #475569;">Reporting Date & time:</td>
-              <td style="padding: 3px 0; font-weight: 700;">${verifiedDate}</td>
-            </tr>
-          </tbody>
-        </table>
-      `;
-
-      const signatureHtml = `
-        <div class="footer-signature" style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 25px; font-size: 11px; page-break-inside: avoid; break-inside: avoid;">
-          <div>
-            <p style="margin: 0; color: #475569; font-style: italic;">Please correlate clinically</p>
-            <p style="margin: 4px 0 0 0; color: #475569;">Test Performed By : <strong style="color: #0f172a;">${item.order?.items?.[0]?.entered_by_name || 'clsowmya'}</strong></p>
-          </div>
-          <div style="text-align: right; width: 220px;">
-            <div style="font-family: 'Georgia', cursive; font-style: italic; color: #1e3a8a; font-size: 16px; font-weight: 700; margin-bottom: 2px;">
-              ${verifiedBy.includes('Priya') ? 'Dr Priya Nair' : 'Dr Vidya Kedari'}
-            </div>
-            <div style="border-top: 1px dashed #94a3b8; padding-top: 4px; font-weight: 700; color: #0f172a;">
-              ${verifiedBy}
-            </div>
-            <div style="font-size: 10px; color: #64748b;">
-              Consultant Pathologist
-            </div>
-          </div>
-        </div>
-        <div style="text-align: center; font-size: 10px; color: #64748b; margin-top: 15px; font-weight: bold; letter-spacing: 2px; page-break-inside: avoid; break-inside: avoid;">
-          *** END OF REPORT ***
-        </div>
-      `;
+      // End of helper functions
 
       let pagesContentHtml = '';
-      if (isLab) {
+
+      if (hasStructuredParameters) {
         const targetItems = item.package_id
           ? (item.order?.items || []).filter((i: any) => i.package_id === item.package_id)
           : [item];
@@ -783,22 +688,16 @@ export const ServiceCatalog: React.FC = () => {
           if (tParams && tParams.length > 0) {
             paramRows = tParams.map((rp: any) => {
               const name = rp.parameter_name || rp.name || '';
-              const isHeader = name.toUpperCase() === 'DIFFERENTIAL LEUKOCYTE COUNT' || name.toUpperCase() === 'PHYSICAL EXAMINATION' || name.toUpperCase() === 'CHEMICAL EXAMINATION' || name.toUpperCase() === 'MICROSCOPIC EXAMINATION' || name.toUpperCase() === 'PERIPHERAL SMEAR';
-
-              if (isHeader) {
-                return `
-                  <tr style="background: #f8fafc; page-break-inside: avoid; break-inside: avoid;">
-                    <td colspan="4" style="padding: 6px 0; font-weight: 800; font-size: 11px; text-transform: uppercase; color: #1e3a8a; border-bottom: 1px solid #e2e8f0;">
-                      ${name}
-                    </td>
-                  </tr>
-                `;
-              }
-
+              
               const paramDef = (tItem.parameters || []).find((p: any) =>
                 (p.parameter_id && (p.parameter_id === rp.parameter_id || p.parameter_id === rp.parameterId)) ||
                 (p.name && p.name.trim().toLowerCase() === (rp.parameter_name || rp.name || name || '').trim().toLowerCase())
               );
+
+              // Condition B: Reference Name mapping
+              const refName = paramDef?.ref_name || paramDef?.reference_range_name || (paramDef?.age_group && paramDef.age_group !== 'Universal' ? paramDef.age_group : '');
+              const parameterDisplayName = refName ? `${name} (${refName})` : name;
+
               const refVal = resolvePatientReferenceRange(paramDef || rp, item.order || item || tItem);
               const isAbnormal = (rp.status && rp.status !== 'Normal') || checkIsAbnormal(rp.actual_value || rp.actualValue || '', refVal);
               const flagText = rp.status && rp.status !== 'Normal' ? `${rp.status} / ` : (isAbnormal ? 'Abnormal / ' : '');
@@ -806,10 +705,10 @@ export const ServiceCatalog: React.FC = () => {
 
               return `
                 <tr style="border-bottom: 1px solid #f1f5f9; page-break-inside: avoid; break-inside: avoid;">
-                  <td style="padding: 5px 0; font-weight: 500; color: #334155;">${name}</td>
-                  <td style="padding: 5px 0; text-align: center; font-size: 12px; font-weight: ${isAbnormal ? '700' : '400'}; color: ${isAbnormal ? '#ef4444' : '#0f172a'};">${displayVal}</td>
-                  <td style="padding: 5px 0; text-align: center; color: #475569; font-family: monospace; font-size: 10px;">${refVal}</td>
-                  <td style="padding: 5px 0; text-align: right; color: ${isAbnormal ? '#ef4444' : '#64748b'}; font-weight: ${isAbnormal ? '700' : '400'};">${flagText}${rp.unit || '—'}</td>
+                  <td style="padding: 5px 8px; font-weight: 500; color: #334155;">${parameterDisplayName}</td>
+                  <td style="padding: 5px 8px; text-align: center; font-size: 12px; font-weight: ${isAbnormal ? '700' : '400'}; color: ${isAbnormal ? '#ef4444' : '#0f172a'};">${displayVal}</td>
+                  <td style="padding: 5px 8px; text-align: center; color: #475569; font-family: monospace; font-size: 11px;">${refVal}</td>
+                  <td style="padding: 5px 8px; text-align: right; color: ${isAbnormal ? '#ef4444' : '#64748b'}; font-weight: ${isAbnormal ? '700' : '400'};">${flagText}${rp.unit || '—'}</td>
                 </tr>
               `;
             }).join('');
@@ -821,10 +720,10 @@ export const ServiceCatalog: React.FC = () => {
 
             paramRows = `
               <tr style="border-bottom: 1px solid #f1f5f9; page-break-inside: avoid; break-inside: avoid;">
-                <td style="padding: 6px 0; font-weight: 700; color: #334155;">${tItem.service_name}</td>
-                <td style="padding: 6px 0; text-align: center; font-size: 12px; font-weight: ${isAbnormal ? '700' : '400'}; color: ${isAbnormal ? '#ef4444' : '#0f172a'};">${displayVal}</td>
-                <td style="padding: 6px 0; text-align: center; color: #475569; font-family: monospace; font-size: 10px;">${refVal}</td>
-                <td style="padding: 6px 0; text-align: right; color: ${isAbnormal ? '#ef4444' : '#64748b'}; font-weight: ${isAbnormal ? '700' : '400'};">${flagText}—</td>
+                <td style="padding: 6px 8px; font-weight: 700; color: #334155;">${tItem.service_name}</td>
+                <td style="padding: 6px 8px; text-align: center; font-size: 12px; font-weight: ${isAbnormal ? '700' : '400'}; color: ${isAbnormal ? '#ef4444' : '#0f172a'};">${displayVal}</td>
+                <td style="padding: 6px 8px; text-align: center; color: #475569; font-family: monospace; font-size: 11px;">${refVal}</td>
+                <td style="padding: 6px 8px; text-align: right; color: ${isAbnormal ? '#ef4444' : '#64748b'}; font-weight: ${isAbnormal ? '700' : '400'};">${flagText}—</td>
               </tr>
             `;
           }
@@ -835,41 +734,30 @@ export const ServiceCatalog: React.FC = () => {
             <div class="report-single-page" style="${pageBreakStyle} padding-bottom: 10px;">
               <table class="report-layout-table" style="width: 100%; border-collapse: collapse; margin: 0; padding: 0;">
                 <thead>
-                  <tr>
-                    <td style="padding: 0; border: none;">
-                      ${headerHtml}
-                      ${patientCardHtml}
-                    </td>
-                  </tr>
+                  <tr><td style="padding: 0; border: none;">${headerHtml}${patientCardHtml}</td></tr>
                 </thead>
                 <tbody>
                   <tr>
                     <td style="padding: 0; border: none;">
                       <div style="text-align: center; margin-top: 8px; margin-bottom: 12px;">
-                        <h2 style="font-size: 14px; font-weight: 800; letter-spacing: 1px; margin: 0; color: #0f172a; text-transform: uppercase;">
-                          ${deptTitle}
-                        </h2>
+                        <h2 style="font-size: 14px; font-weight: 800; letter-spacing: 1px; margin: 0; color: #0f172a; text-transform: uppercase;">${deptTitle}</h2>
                         <h3 style="font-size: 12px; font-weight: 700; text-decoration: underline; margin: 4px 0 0 0; text-transform: uppercase; color: #1e3a8a; letter-spacing: 0.5px;">
-                          ${item.package_name ? `${item.package_name} — ` : ''}${tItem.service_name} (${tItem.service_code || 'TEST'})
+                          ${item.package_name ? `${item.package_name} — ` : ''}${tItem.service_name}
                         </h3>
                       </div>
-
                       <div style="width: 100%; margin-bottom: 15px;">
                         <table style="width: 100%; border-collapse: collapse; margin-top: 4px; margin-bottom: 8px; font-size: 11px;">
                           <thead>
                             <tr style="border-bottom: 1.5px solid #0f172a; border-top: 1.5px solid #0f172a; text-align: left; font-size: 10px; color: #475569;">
-                              <th style="padding: 6px 0; font-weight: 700; width: 35%; text-transform: uppercase;">Test Parameter</th>
-                              <th style="padding: 6px 0; font-weight: 700; width: 20%; text-align: center; text-transform: uppercase;">Observed Value</th>
-                              <th style="padding: 6px 0; font-weight: 700; width: 25%; text-align: center; text-transform: uppercase;">Reference Range</th>
-                              <th style="padding: 6px 0; font-weight: 700; width: 20%; text-align: right; text-transform: uppercase;">Flag / Unit</th>
+                              <th style="padding: 6px 8px; font-weight: 700; width: 35%; text-transform: uppercase;">TEST PARAMETER</th>
+                              <th style="padding: 6px 8px; font-weight: 700; width: 20%; text-align: center; text-transform: uppercase;">OBSERVED VALUE</th>
+                              <th style="padding: 6px 8px; font-weight: 700; width: 25%; text-align: center; text-transform: uppercase;">REFERENCE RANGE</th>
+                              <th style="padding: 6px 8px; font-weight: 700; width: 20%; text-align: right; text-transform: uppercase;">FLAG / UNIT</th>
                             </tr>
                           </thead>
-                          <tbody>
-                            ${paramRows}
-                          </tbody>
+                          <tbody>${paramRows}</tbody>
                         </table>
                       </div>
-
                       ${signatureHtml}
                     </td>
                   </tr>
@@ -879,54 +767,44 @@ export const ServiceCatalog: React.FC = () => {
           `;
         }).join('');
       } else {
-        const findings = item.radiology_report?.findings || item.ultrasound_report?.findings || item.ecg_report?.findings || '—';
-        const impression = item.radiology_report?.impression || item.ultrasound_report?.impression || item.ecg_report?.interpretation || '—';
+        // Condition C: Narrative Findings / Impressions Format
+        const findings = item.radiology_report?.findings || item.ultrasound_report?.findings || item.ecg_report?.findings || item.lab_result?.remarks || '—';
+        const impression = item.radiology_report?.impression || item.ultrasound_report?.impression || item.ecg_report?.interpretation || item.lab_result?.interpretation || '—';
         const conclusion = item.radiology_report?.conclusion || item.ultrasound_report?.recommendations || item.ecg_report?.recommendation || '';
 
         pagesContentHtml = `
           <div class="report-single-page" style="padding-bottom: 10px;">
             <table class="report-layout-table" style="width: 100%; border-collapse: collapse; margin: 0; padding: 0;">
               <thead>
-                <tr>
-                  <td style="padding: 0; border: none;">
-                    ${headerHtml}
-                    ${patientCardHtml}
-                  </td>
-                </tr>
+                <tr><td style="padding: 0; border: none;">${headerHtml}${patientCardHtml}</td></tr>
               </thead>
               <tbody>
                 <tr>
                   <td style="padding: 0; border: none;">
                     <div style="text-align: center; margin-top: 8px; margin-bottom: 12px;">
-                      <h2 style="font-size: 14px; font-weight: 800; letter-spacing: 1px; margin: 0; color: #0f172a; text-transform: uppercase;">
-                        ${deptTitle}
-                      </h2>
-                      <h3 style="font-size: 12px; font-weight: 700; text-decoration: underline; margin: 4px 0 0 0; text-transform: uppercase; color: #1e3a8a; letter-spacing: 0.5px;">
-                        ${item.service_name}
-                      </h3>
+                      <h2 style="font-size: 14px; font-weight: 800; letter-spacing: 1px; margin: 0; color: #0f172a; text-transform: uppercase;">${deptTitle}</h2>
+                      <h3 style="font-size: 12px; font-weight: 700; text-decoration: underline; margin: 4px 0 0 0; text-transform: uppercase; color: #1e3a8a; letter-spacing: 0.5px;">${item.service_name}</h3>
                     </div>
-
                     <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 15px; font-size: 13px;">
                       <div>
-                        <h4 style="margin: 0 0 6px 0; color: #475569; text-transform: uppercase; font-size: 12px;">Dictated Findings</h4>
+                        <h4 style="margin: 0 0 6px 0; color: #475569; text-transform: uppercase; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px;">DICTATED FINDINGS</h4>
                         <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; white-space: pre-wrap; font-family: monospace;">${findings}</div>
                       </div>
                       <div>
-                        <h4 style="margin: 0 0 4px 0; color: #475569; text-transform: uppercase; font-size: 12px;">Diagnostic Impression</h4>
-                        <p style="margin: 0; font-weight: 700; color: #0f172a;">${impression}</p>
+                        <h4 style="margin: 0 0 4px 0; color: #475569; text-transform: uppercase; font-size: 12px; font-weight: 700; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px;">DIAGNOSTIC IMPRESSION</h4>
+                        <p style="margin: 0; font-weight: 700; color: #0f172a; white-space: pre-wrap;">${impression}</p>
                       </div>
                       ${conclusion ? `
                         <div>
-                          <h4 style="margin: 0 0 4px 0; color: #475569; text-transform: uppercase; font-size: 12px;">Conclusion / Recommendations</h4>
-                          <p style="margin: 0; color: #334155;">${conclusion}</p>
+                          <h4 style="margin: 0 0 4px 0; color: #475569; text-transform: uppercase; font-size: 12px; font-weight: 700;">CONCLUSION / RECOMMENDATIONS</h4>
+                          <p style="margin: 0; color: #334155; white-space: pre-wrap;">${conclusion}</p>
                         </div>
                       ` : ''}
                       <div style="border-top: 1px solid #e2e8f0; padding-top: 10px;">
-                        <h4 style="margin: 0 0 6px 0; color: #475569; text-transform: uppercase; font-size: 12px; font-weight: 700;">Interpretation</h4>
-                        <p style="margin: 0; font-size: 12px; color: #334155; white-space: pre-wrap;">${impression !== '—' ? impression : 'Please correlate clinically.'}</p>
+                        <h4 style="margin: 0 0 6px 0; color: #475569; text-transform: uppercase; font-size: 12px; font-weight: 700;">INTERPRETATION</h4>
+                        <p style="margin: 0; font-size: 12px; color: #334155; white-space: pre-wrap;">Please correlate clinically.</p>
                       </div>
                     </div>
-
                     ${signatureHtml}
                   </td>
                 </tr>
@@ -2632,6 +2510,92 @@ export const ServiceCatalog: React.FC = () => {
               </Button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* OP Patient Due Payment Lock Alert Modal */}
+      {dueAlertOpen && dueAlertData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '480px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              padding: '20px',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.2)', padding: '10px', borderRadius: '12px', display: 'flex' }}>
+                <AlertTriangle size={24} color="#ffffff" />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Payment Pending</h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '12px', opacity: 0.9 }}>Report Print Lock Enforced</p>
+              </div>
+            </div>
+
+            <div style={{ padding: '24px' }}>
+              <p style={{ fontSize: '14px', color: 'var(--text-primary)', margin: 0, lineHeight: 1.6 }}>
+                Payment Pending: Please collect the pending due amount (<strong>₹{dueAlertData.dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>) before printing the report.
+              </p>
+
+              <div style={{
+                marginTop: '20px',
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                borderRadius: '8px',
+                padding: '12px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>OP Patient Due Amount</span>
+                  <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--accent-danger)' }}>₹{dueAlertData.dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <span style={{ background: '#ef4444', color: '#ffffff', fontSize: '10px', fontWeight: 700, padding: '4px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                  Lock Active
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px' }}>
+                <Button variant="secondary" onClick={() => setDueAlertOpen(false)}>
+                  Close
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setDueAlertOpen(false);
+                    navigate('/billing/invoices');
+                  }}
+                  style={{ background: '#2563eb', color: '#ffffff', fontWeight: 700 }}
+                >
+                  💰 Collect Remaining Bill
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

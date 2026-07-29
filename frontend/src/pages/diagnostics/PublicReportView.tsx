@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Beaker, ShieldAlert, Printer, RefreshCw, AlertTriangle, FileText, CheckCircle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -9,10 +9,13 @@ import { resolvePatientReferenceRange } from '../../utils/referenceRangeResolver
 
 export const PublicReportView: React.FC = () => {
   const { itemId } = useParams<{ itemId: string }>();
+  const navigate = useNavigate();
   const [report, setReport] = useState<any>(null);
   const [hospitalSettings, setHospitalSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [dueAlertOpen, setDueAlertOpen] = useState(false);
+  const [dueAlertData, setDueAlertData] = useState<{ patientName: string; dueAmount: number; invoiceId?: string } | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -65,6 +68,18 @@ export const PublicReportView: React.FC = () => {
   };
 
   const handlePrint = () => {
+    const isOpPatient = (report?.patient_type || report?.patientType || 'OP').toUpperCase() === 'OP';
+    const dueAmt = parseFloat(report?.due_amount !== undefined ? report.due_amount : 0);
+
+    if (isOpPatient && dueAmt > 0) {
+      setDueAlertData({
+        patientName: report.patient_name || (report.first_name ? `${report.first_name} ${report.last_name || ''}`.trim() : 'Patient'),
+        dueAmount: dueAmt,
+        invoiceId: report.invoice_id
+      });
+      setDueAlertOpen(true);
+      return;
+    }
     window.print();
   };
 
@@ -94,7 +109,18 @@ export const PublicReportView: React.FC = () => {
 
   const patientName = report.patient_name || (report.first_name ? `${report.first_name} ${report.last_name || ''}`.trim() : '—');
   const patientMrn = report.patient_mrn || report.medical_record_number || '—';
-  const isLab = report.category_name === 'Laboratory';
+  
+  const hasStructuredParameters = Boolean(
+    (report.result_parameters && report.result_parameters.length > 0) ||
+    (report.parameters && report.parameters.length > 0) ||
+    (report.lab_result && report.lab_result.actual_result && report.lab_result.actual_result !== 'Multiple Values' && report.lab_result.actual_result !== '—') ||
+    (report.package_items && report.package_items.some((pi: any) => 
+      (pi.result_parameters && pi.result_parameters.length > 0) || 
+      (pi.parameters && pi.parameters.length > 0) || 
+      (pi.lab_result && pi.lab_result.actual_result)
+    ))
+  );
+  const isLab = hasStructuredParameters;
   const hospitalName = hospitalSettings?.hospital_name || 'Telangana Diagnostics';
   const hospitalAddress = hospitalSettings?.hospital_address || 'Central Lab, IPM Campus, Narayanaguda, Hyd - 500029.';
   const phoneNumber = hospitalSettings?.phone_number || '040 - 68244555, 88012 33333';
@@ -642,12 +668,14 @@ export const PublicReportView: React.FC = () => {
                                         (p.parameter_id && (p.parameter_id === rp.parameter_id || p.parameter_id === rp.parameterId)) ||
                                         (p.name && p.name.trim().toLowerCase() === (rp.parameter_name || rp.name || name || '').trim().toLowerCase())
                                       );
+                                      const refName = paramDef?.ref_name || paramDef?.reference_range_name || (paramDef?.age_group && paramDef.age_group !== 'Universal' ? paramDef.age_group : '');
+                                      const parameterDisplayName = refName ? `${name} (${refName})` : name;
                                       const refVal = resolvePatientReferenceRange(paramDef || rp, report);
                                       const isAbnormal = (rp.status && rp.status !== 'Normal') || checkIsAbnormal(rp.actual_value || rp.actualValue || '', refVal);
                                      const flagText = rp.status && rp.status !== 'Normal' ? `${rp.status} / ` : (isAbnormal ? 'Abnormal / ' : '');
                                      return (
                                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                         <td style={{ padding: '8px 0', fontWeight: 500 }}>{name}</td>
+                                         <td style={{ padding: '8px 0', fontWeight: 500 }}>{parameterDisplayName}</td>
                                          <td style={{ padding: '8px 0', textAlign: 'center' }}>
                                            <span style={{ fontSize: '13px', fontWeight: isAbnormal ? '700' : '400', color: isAbnormal ? '#ef4444' : '#0f172a' }}>{rp.actual_value || rp.actualValue || '—'}</span>
                                          </td>
@@ -743,6 +771,91 @@ export const PublicReportView: React.FC = () => {
           </div>
         );
       })()}
+      {/* OP Patient Due Payment Lock Alert Modal */}
+      {dueAlertOpen && dueAlertData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '480px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              padding: '20px',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <div style={{ background: 'rgba(255, 255, 255, 0.2)', padding: '10px', borderRadius: '12px', display: 'flex' }}>
+                <AlertTriangle size={24} color="#ffffff" />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Payment Pending</h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '12px', opacity: 0.9 }}>Report Print Lock Enforced</p>
+              </div>
+            </div>
+
+            <div style={{ padding: '24px' }}>
+              <p style={{ fontSize: '14px', color: 'var(--text-primary)', margin: 0, lineHeight: 1.6 }}>
+                Payment Pending: Please collect the pending due amount (<strong>₹{dueAlertData.dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>) before printing the report.
+              </p>
+
+              <div style={{
+                marginTop: '20px',
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                borderRadius: '8px',
+                padding: '12px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>OP Patient Due Amount</span>
+                  <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--accent-danger)' }}>₹{dueAlertData.dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <span style={{ background: '#ef4444', color: '#ffffff', fontSize: '10px', fontWeight: 700, padding: '4px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                  Lock Active
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px' }}>
+                <Button variant="secondary" onClick={() => setDueAlertOpen(false)}>
+                  Close
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setDueAlertOpen(false);
+                    navigate('/billing/invoices');
+                  }}
+                  style={{ background: '#2563eb', color: '#ffffff', fontWeight: 700 }}
+                >
+                  💰 Collect Remaining Bill
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

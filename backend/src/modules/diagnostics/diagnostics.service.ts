@@ -400,10 +400,15 @@ export const getOrders = async () => {
            p.first_name, p.last_name, p.mrn as medical_record_number, p.phone as patient_phone, 
            p.gender as patient_gender, p.gender as gender, 
            p.date_of_birth as patient_birth_date, p.date_of_birth as birth_date,
-           u.first_name as doc_first, u.last_name as doc_last
+           u.first_name as doc_first, u.last_name as doc_last,
+           CASE WHEN ip.admission_id IS NOT NULL THEN 'IP' ELSE 'OP' END as patient_type,
+           COALESCE(inv.due_amount, 0) as due_amount,
+           inv.invoice_id
     FROM test_orders o
-    JOIN patients p ON o.patient_id = p.patient_id COLLATE utf8mb4_general_ci
-    LEFT JOIN users u ON o.doctor_id = u.user_id COLLATE utf8mb4_general_ci
+    JOIN patients p ON o.patient_id COLLATE utf8mb4_general_ci = p.patient_id COLLATE utf8mb4_general_ci
+    LEFT JOIN users u ON o.doctor_id COLLATE utf8mb4_general_ci = u.user_id COLLATE utf8mb4_general_ci
+    LEFT JOIN ip_admissions ip ON o.patient_id COLLATE utf8mb4_general_ci = ip.patient_id COLLATE utf8mb4_general_ci AND ip.status COLLATE utf8mb4_general_ci = 'Admitted'
+    LEFT JOIN invoices inv ON o.patient_id COLLATE utf8mb4_general_ci = inv.patient_id COLLATE utf8mb4_general_ci
     ORDER BY o.created_at DESC
   `);
 
