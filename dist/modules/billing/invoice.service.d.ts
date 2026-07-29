@@ -13,7 +13,7 @@ export declare const getPatientInvoices: (patientId: string) => Promise<any[]>;
 export declare const recordPayment: (id: string, input: RecordPaymentInput) => Promise<any>;
 export declare const cancelInvoice: (id: string) => Promise<any>;
 export declare const returnInvoice: (id: string) => Promise<any>;
-export declare const updateInvoiceStatus: (id: string, status: "Paid" | "Unpaid", paymentMethod: string) => Promise<any>;
+export declare const updateInvoiceStatus: (id: string, status: "Paid" | "Unpaid" | "PartiallyPaid", paymentMethod: string) => Promise<any>;
 export declare const getBillingAnalytics: (options: {
     period?: string;
     startDate?: string;

@@ -22,8 +22,10 @@ export declare const createInvoiceSchema: z.ZodObject<{
     tax: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     insuranceCoverage: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
     notes: z.ZodOptional<z.ZodString>;
-    paymentStatus: z.ZodDefault<z.ZodOptional<z.ZodEnum<["Paid", "Unpaid"]>>>;
+    paymentStatus: z.ZodDefault<z.ZodOptional<z.ZodEnum<["Paid", "Unpaid", "PartiallyPaid"]>>>;
     paymentMethod: z.ZodOptional<z.ZodString>;
+    paidAmount: z.ZodOptional<z.ZodNumber>;
+    amountPaid: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     patientId: string;
     items: {
@@ -35,10 +37,12 @@ export declare const createInvoiceSchema: z.ZodObject<{
     discount: number;
     tax: number;
     insuranceCoverage: number;
-    paymentStatus: "Paid" | "Unpaid";
+    paymentStatus: "Paid" | "Unpaid" | "PartiallyPaid";
     notes?: string | undefined;
     paymentMethod?: string | undefined;
     encounterId?: string | undefined;
+    paidAmount?: number | undefined;
+    amountPaid?: number | undefined;
 }, {
     patientId: string;
     items: {
@@ -53,7 +57,9 @@ export declare const createInvoiceSchema: z.ZodObject<{
     discount?: number | undefined;
     tax?: number | undefined;
     insuranceCoverage?: number | undefined;
-    paymentStatus?: "Paid" | "Unpaid" | undefined;
+    paymentStatus?: "Paid" | "Unpaid" | "PartiallyPaid" | undefined;
+    paidAmount?: number | undefined;
+    amountPaid?: number | undefined;
 }>;
 export declare const recordPaymentSchema: z.ZodObject<{
     amountPaid: z.ZodNumber;

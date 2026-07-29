@@ -36,6 +36,8 @@ const InvoiceGenerator: React.FC = () => {
   const [insurance, setInsurance] = useState('0');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [paymentStatus, setPaymentStatus] = useState('Paid');
+  const [advancePaid, setAdvancePaid] = useState<string>('');
+
   const DEFAULT_DOCTORS = useMemo(() => [
     'Dr. Priya Nair (Dermatology) M.B.B.S, M.D.',
     'Dr. Alex Nguyen (General Medicine) M.D.',
@@ -166,6 +168,19 @@ const InvoiceGenerator: React.FC = () => {
   const subtotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
   const total = subtotal - Number(discount) + Number(tax);
   const patientOwes = total - Number(insurance);
+
+  const actualPaidAmountNum = advancePaid !== '' ? Math.max(0, Number(advancePaid)) : patientOwes;
+  const clampedPaidAmount = Math.min(patientOwes, actualPaidAmountNum);
+  const calculatedDueAmount = Math.max(0, patientOwes - clampedPaidAmount);
+
+  let calculatedPaymentStatus: 'Paid' | 'PartiallyPaid' | 'Unpaid' = 'Unpaid';
+  if (clampedPaidAmount >= patientOwes && patientOwes > 0) {
+    calculatedPaymentStatus = 'Paid';
+  } else if (clampedPaidAmount > 0) {
+    calculatedPaymentStatus = 'PartiallyPaid';
+  } else {
+    calculatedPaymentStatus = 'Unpaid';
+  }
 
   const loadHospitalSettings = async () => {
     try {
@@ -808,12 +823,22 @@ const InvoiceGenerator: React.FC = () => {
                   </div>
                   <div class="calc-block">
                     <div class="calc-row receivable-row">
-                      <span class="calc-label">Amount Receivable</span>
-                      <span class="calc-val">${parseFloat(inv.patient_responsibility).toFixed(2)}</span>
+                      <span class="calc-label">Total Bill Amount</span>
+                      <span class="calc-val">Rs. ${parseFloat(inv.patient_responsibility || inv.total_amount).toFixed(2)}</span>
                     </div>
-                    <div class="calc-row received-row">
-                      <span class="calc-label">Amount Received</span>
-                      <span class="calc-val">${parseFloat(inv.amount_paid).toFixed(2)}</span>
+                    <div class="calc-row received-row" style="color: #16a34a;">
+                      <span class="calc-label">Paid Amount (Advance)</span>
+                      <span class="calc-val">Rs. ${parseFloat(inv.amount_paid || 0).toFixed(2)}</span>
+                    </div>
+                    <div class="calc-row due-row" style="font-weight: 800; border-top: 1px solid #e2e8f0; padding-top: 6px; margin-top: 2px; color: ${parseFloat(inv.due_amount !== undefined && inv.due_amount !== null ? inv.due_amount : (inv.patient_responsibility - inv.amount_paid)) > 0 ? '#d97706' : '#16a34a'};">
+                      <span class="calc-label">Balance Due Amount</span>
+                      <span class="calc-val">Rs. ${parseFloat(inv.due_amount !== undefined && inv.due_amount !== null ? inv.due_amount : (inv.patient_responsibility - inv.amount_paid)).toFixed(2)}</span>
+                    </div>
+                    <div class="calc-row" style="margin-top: 4px;">
+                      <span class="calc-label">Payment Status</span>
+                      <span class="calc-val" style="font-weight: 700; color: ${inv.status === 'Paid' ? '#16a34a' : inv.status === 'PartiallyPaid' ? '#d97706' : '#dc2626'};">
+                        ${inv.status === 'PartiallyPaid' ? 'PARTIALLY PAID / DUE' : (inv.status || 'UNPAID').toUpperCase()}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -835,6 +860,12 @@ const InvoiceGenerator: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!patient || items.length === 0) return;
+
+    if (advancePaid !== '' && Number(advancePaid) > patientOwes) {
+      alert(`⚠️ Advance paid amount (Rs. ${advancePaid}) cannot exceed Total Bill Amount (${formatCurrency(patientOwes)}).`);
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await api.post('/billing/invoices', {
@@ -844,7 +875,8 @@ const InvoiceGenerator: React.FC = () => {
         tax: Number(tax),
         insuranceCoverage: Number(insurance),
         paymentMethod,
-        paymentStatus
+        paidAmount: clampedPaidAmount,
+        paymentStatus: calculatedPaymentStatus
       });
       
       if (res.data.success) {
@@ -852,6 +884,7 @@ const InvoiceGenerator: React.FC = () => {
         setSuccess('Invoice created successfully! Initializing printout...');
         setItems([]);
         setPatient(null);
+        setAdvancePaid('');
         setTimeout(() => setSuccess(''), 3000);
         
         // Print the invoice directly
@@ -1456,168 +1489,119 @@ const InvoiceGenerator: React.FC = () => {
           <div className="card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', padding: '20px', borderRadius: '12px', marginBottom: '24px' }}>
             <div className="form-section-title" style={{ fontWeight: 700, marginBottom: '12px' }}>Line Items</div>
             
-            {/* Catalog Select & Search Box */}
-            <div style={{ marginBottom: '16px', background: 'var(--bg-primary)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              
-              {/* Direct Select Dropdown for Diagnostic Test Services & Packages */}
-              <div>
+            {/* Quick Search Box for Diagnostics Services & Profiles / Packages */}
+            {allCatalogItems.length > 0 && (
+              <div style={{ marginBottom: '16px', background: 'var(--bg-primary)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-primary)', position: 'relative' }}>
                 <label style={{ fontSize: '12px', color: 'var(--accent-primary)', display: 'block', marginBottom: '6px', fontWeight: 700 }}>
-                  🧪 Select Test Service or Profile/Package from Diagnostics Catalog
+                  🔍 Quick Search Diagnostics Services & Profiles / Packages (By Code, Test Name, or Package Title)
                 </label>
-                <select
-                  className="select"
-                  value=""
-                  onChange={(e) => {
-                    const selectedId = e.target.value;
-                    if (!selectedId) return;
-                    const found = allCatalogItems.find(item => item.id === selectedId);
-                    if (found) {
-                      setItemForm({
-                        description: found.name,
-                        category: 'Diagnostics',
-                        quantity: '1',
-                        unitPrice: parseFloat(found.price).toString()
-                      });
-                    }
-                  }}
-                  style={{ width: '100%', background: 'var(--bg-card)', color: 'var(--text-primary)', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', border: '1px solid var(--border-primary)' }}
-                >
-                  <option value="">-- Choose Individual Test Service or Package from Catalog ({allCatalogItems.length} items available) --</option>
-                  {diagServices.length > 0 && (
-                    <optgroup label="🧪 Individual Diagnostic Test Services">
-                      {diagServices.map(s => (
-                        <option key={`svc-${s.service_id}`} value={`svc-${s.service_id}`}>
-                          [{s.service_code}] {s.name} - Rs. {parseFloat(s.price).toFixed(0)} ({s.category_name || 'Diagnostics'})
-                        </option>
-                      ))}
-                    </optgroup>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-card)', border: '1px solid var(--border-primary)', padding: '8px 12px', borderRadius: '8px' }}>
+                  <Search size={16} color="var(--text-muted)" />
+                  <input 
+                    type="text" 
+                    placeholder="Type to search test services or packages (e.g. CBP, LFT, Executive Health Profile...)" 
+                    value={diagSearchQuery}
+                    onChange={(e) => {
+                      setDiagSearchQuery(e.target.value);
+                      setDiagDropdownOpen(true);
+                    }}
+                    onFocus={() => setDiagDropdownOpen(true)}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', width: '100%', outline: 'none', fontSize: '13px' }}
+                  />
+                  {diagSearchQuery && (
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setDiagSearchQuery('');
+                        setDiagDropdownOpen(false);
+                      }} 
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                    >
+                      <X size={14} />
+                    </button>
                   )}
-                  {diagPackages.length > 0 && (
-                    <optgroup label="📦 Diagnostic Profiles & Health Packages">
-                      {diagPackages.map(p => (
-                        <option key={`pkg-${p.package_id}`} value={`pkg-${p.package_id}`}>
-                          📦 {p.name} - Rs. {parseFloat(p.price).toFixed(0)} ({p.services?.length || 0} Tests Included)
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-              </div>
+                </div>
 
-              {/* Quick Search Input */}
-              {allCatalogItems.length > 0 && (
-                <div style={{ position: 'relative' }}>
-                  <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: 600 }}>
-                    Or Quick Search by Test Code / Name / Profile Title:
-                  </label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-card)', border: '1px solid var(--border-primary)', padding: '8px 12px', borderRadius: '8px' }}>
-                    <Search size={16} color="var(--text-muted)" />
-                    <input 
-                      type="text" 
-                      placeholder="Type to search test services or packages (e.g. CBP, LFT, Executive Health Profile...)" 
-                      value={diagSearchQuery}
-                      onChange={(e) => {
-                        setDiagSearchQuery(e.target.value);
-                        setDiagDropdownOpen(true);
-                      }}
-                      onFocus={() => setDiagDropdownOpen(true)}
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', width: '100%', outline: 'none', fontSize: '13px' }}
-                    />
-                    {diagSearchQuery && (
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          setDiagSearchQuery('');
-                          setDiagDropdownOpen(false);
-                        }} 
-                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Floating autocomplete results list */}
-                  {diagDropdownOpen && (
-                    <div style={{ 
-                      position: 'absolute', 
-                      top: '100%', 
-                      left: 0, 
-                      right: 0, 
-                      background: 'var(--bg-card)', 
-                      border: '1px solid var(--border-primary)', 
-                      borderRadius: '8px', 
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)', 
-                      maxHeight: '260px', 
-                      overflowY: 'auto', 
-                      zIndex: 50,
-                      marginTop: '4px'
-                    }}>
-                      {allCatalogItems
-                        .filter(item => 
-                          !diagSearchQuery ||
-                          item.name.toLowerCase().includes(diagSearchQuery.toLowerCase()) || 
-                          item.code.toLowerCase().includes(diagSearchQuery.toLowerCase())
-                        )
-                        .slice(0, 20)
-                        .map(item => (
-                          <div 
-                            key={item.id} 
-                            onClick={() => {
-                              setItemForm({
-                                description: item.name,
-                                category: 'Diagnostics',
-                                quantity: '1',
-                                unitPrice: parseFloat(item.price).toString()
-                              });
-                              setDiagSearchQuery(`${item.name} (${item.code})`);
-                              setDiagDropdownOpen(false);
-                            }}
-                            style={{ 
-                              padding: '10px 14px', 
-                              cursor: 'pointer', 
-                              borderBottom: '1px solid var(--border-primary)',
-                              transition: 'background 0.2s',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              fontSize: '13px'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-primary)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {item.type === 'Profile/Package' ? (
-                                <span style={{ fontFamily: 'sans-serif', fontSize: '10px', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                                  PROFILE / PACKAGE
-                                </span>
-                              ) : (
-                                <span style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--accent-primary)', fontWeight: 700 }}>
-                                  [{item.code}]
-                                </span>
-                              )}
-                              <span style={{ fontWeight: item.type === 'Profile/Package' ? 700 : 500 }}>{item.name}</span>
-                              {item.type === 'Profile/Package' && item.count > 0 && (
-                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>({item.count} Tests Included)</span>
-                              )}
-                            </div>
-                            <span style={{ fontWeight: 700, color: 'var(--accent-success)' }}>Rs. {parseFloat(item.price).toFixed(0)}</span>
-                          </div>
-                        ))}
-                      {allCatalogItems.filter(item => 
+                {/* Floating autocomplete results list */}
+                {diagDropdownOpen && (
+                  <div style={{ 
+                    position: 'absolute', 
+                    top: '100%', 
+                    left: 0, 
+                    right: 0, 
+                    background: 'var(--bg-card)', 
+                    border: '1px solid var(--border-primary)', 
+                    borderRadius: '8px', 
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)', 
+                    maxHeight: '260px', 
+                    overflowY: 'auto', 
+                    zIndex: 50,
+                    marginTop: '4px'
+                  }}>
+                    {allCatalogItems
+                      .filter(item => 
                         !diagSearchQuery ||
                         item.name.toLowerCase().includes(diagSearchQuery.toLowerCase()) || 
                         item.code.toLowerCase().includes(diagSearchQuery.toLowerCase())
-                      ).length === 0 && (
-                        <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                          No matching diagnostic services or profiles/packages found.
+                      )
+                      .slice(0, 20)
+                      .map(item => (
+                        <div 
+                          key={item.id} 
+                          onClick={() => {
+                            setItemForm({
+                              description: item.name,
+                              category: 'Diagnostics',
+                              quantity: '1',
+                              unitPrice: parseFloat(item.price).toString()
+                            });
+                            setDiagSearchQuery(`${item.name} (${item.code})`);
+                            setDiagDropdownOpen(false);
+                          }}
+                          style={{ 
+                            padding: '10px 14px', 
+                            cursor: 'pointer', 
+                            borderBottom: '1px solid var(--border-primary)',
+                            transition: 'background 0.2s',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontSize: '13px'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-primary)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {item.type === 'Profile/Package' ? (
+                              <span style={{ fontFamily: 'sans-serif', fontSize: '10px', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                PROFILE / PACKAGE
+                              </span>
+                            ) : (
+                              <span style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--accent-primary)', fontWeight: 700 }}>
+                                [{item.code}]
+                              </span>
+                            )}
+                            <span style={{ fontWeight: item.type === 'Profile/Package' ? 700 : 500 }}>{item.name}</span>
+                            {item.type === 'Profile/Package' && item.count > 0 && (
+                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>({item.count} Tests Included)</span>
+                            )}
+                          </div>
+                          <span style={{ fontWeight: 700, color: 'var(--accent-success)' }}>Rs. {parseFloat(item.price).toFixed(0)}</span>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+                      ))}
+                    {allCatalogItems.filter(item => 
+                      !diagSearchQuery ||
+                      item.name.toLowerCase().includes(diagSearchQuery.toLowerCase()) || 
+                      item.code.toLowerCase().includes(diagSearchQuery.toLowerCase())
+                    ).length === 0 && (
+                      <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                        No matching diagnostic services or profiles/packages found.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 80px 100px auto', gap: '10px', alignItems: 'end', marginBottom: '16px' }}>
               <Input label="Description" value={itemForm.description} onChange={e => setItemForm({ ...itemForm, description: e.target.value })} style={{ background: 'var(--bg-primary)' }} />
@@ -1666,8 +1650,11 @@ const InvoiceGenerator: React.FC = () => {
           </div>
 
           <div className="card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', padding: '20px', borderRadius: '12px', marginBottom: '24px' }}>
-            <div className="form-section-title" style={{ fontWeight: 700, marginBottom: '12px' }}>Payment Settings</div>
-            <div style={{ display: 'grid', gridTemplateColumns: patient?.is_inpatient ? '1fr 1fr' : '1fr', gap: '16px' }}>
+            <div className="form-section-title" style={{ fontWeight: 700, marginBottom: '14px' }}>
+              💳 Payment & Advance Collection Settlement
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px', alignItems: 'end' }}>
               <Select 
                 label="Payment Method" 
                 value={paymentMethod} 
@@ -1680,18 +1667,89 @@ const InvoiceGenerator: React.FC = () => {
                   { value: 'Bank Transfer', label: 'Bank Transfer' }
                 ]} 
               />
-              {patient?.is_inpatient && (
-                <Select 
-                  label="Payment Status" 
-                  value={paymentStatus} 
-                  onChange={e => setPaymentStatus(e.target.value)} 
-                  options={[
-                    { value: 'Paid', label: 'Paid (Immediate Settlement)' },
-                    { value: 'Unpaid', label: 'Unpaid (On Account / Deferred)' }
-                  ]} 
+
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+                  Initial / Advance Paid Amount (Rs.)
+                </label>
+                <Input 
+                  type="number"
+                  step="0.01"
+                  placeholder={`Full Rs. ${patientOwes.toFixed(0)}`}
+                  value={advancePaid}
+                  onChange={e => setAdvancePaid(e.target.value)}
+                  style={{ background: 'var(--bg-primary)' }}
                 />
-              )}
+              </div>
+
+              <div>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+                  Calculated Payment Status
+                </label>
+                <div style={{ 
+                  padding: '8px 12px', 
+                  borderRadius: '8px', 
+                  fontWeight: 700, 
+                  fontSize: '13px', 
+                  display: 'inline-block',
+                  width: '100%',
+                  textAlign: 'center',
+                  background: calculatedPaymentStatus === 'Paid' ? 'rgba(34, 197, 94, 0.15)' : calculatedPaymentStatus === 'PartiallyPaid' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  color: calculatedPaymentStatus === 'Paid' ? '#16a34a' : calculatedPaymentStatus === 'PartiallyPaid' ? '#d97706' : '#dc2626',
+                  border: `1px solid ${calculatedPaymentStatus === 'Paid' ? 'rgba(34, 197, 94, 0.3)' : calculatedPaymentStatus === 'PartiallyPaid' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                }}>
+                  {calculatedPaymentStatus === 'Paid' ? '✅ Paid (Full Settlement)' : calculatedPaymentStatus === 'PartiallyPaid' ? '⚠️ Partially Paid / Due' : '❌ Unpaid (Full Due)'}
+                </div>
+              </div>
             </div>
+
+            {/* Quick Preset Buttons */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '16px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600 }}>Quick Pay Presets:</span>
+              <button 
+                type="button"
+                onClick={() => setAdvancePaid(patientOwes.toString())}
+                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 600, color: 'var(--accent-success)' }}
+              >
+                Full Payment (Rs. {patientOwes.toFixed(0)})
+              </button>
+              <button 
+                type="button"
+                onClick={() => setAdvancePaid((patientOwes / 2).toFixed(0))}
+                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 600, color: '#d97706' }}
+              >
+                50% Advance (Rs. {(patientOwes / 2).toFixed(0)})
+              </button>
+              <button 
+                type="button"
+                onClick={() => setAdvancePaid('0')}
+                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 600, color: 'var(--accent-danger)' }}
+              >
+                Zero Paid (Unpaid / Rs. 0)
+              </button>
+            </div>
+
+            {/* Real-time Ledger Summary Banner */}
+            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-primary)', padding: '14px', borderRadius: '8px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', textAlign: 'center' }}>
+              <div style={{ background: 'var(--bg-card)', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-primary)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Total Bill Amount</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>{formatCurrency(patientOwes)}</div>
+              </div>
+              <div style={{ background: 'var(--bg-card)', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-primary)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Paid Amount (Advance)</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#16a34a', marginTop: '2px' }}>{formatCurrency(clampedPaidAmount)}</div>
+              </div>
+              <div style={{ background: 'var(--bg-card)', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-primary)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Balance Due Amount</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: calculatedDueAmount > 0 ? '#d97706' : '#16a34a', marginTop: '2px' }}>{formatCurrency(calculatedDueAmount)}</div>
+              </div>
+            </div>
+
+            {Number(advancePaid) > patientOwes && (
+              <div style={{ marginTop: '12px', color: '#dc2626', fontSize: '12px', fontWeight: 700, background: 'rgba(239,68,68,0.1)', padding: '8px 12px', borderRadius: '6px' }}>
+                ⚠️ Warning: Advance paid amount (Rs. {advancePaid}) cannot exceed Total Bill Amount ({formatCurrency(patientOwes)}).
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -1830,48 +1888,60 @@ const InvoiceGenerator: React.FC = () => {
                     <th style={{ padding: '12px 16px' }}>Invoice ID</th>
                     <th style={{ padding: '12px 16px' }}>Patient</th>
                     <th style={{ padding: '12px 16px' }}>Doctor</th>
-                    <th style={{ padding: '12px 16px' }}>Total Amount</th>
-                    <th style={{ padding: '12px 16px' }}>Amount Paid</th>
+                    <th style={{ padding: '12px 16px' }}>Total Bill</th>
+                    <th style={{ padding: '12px 16px' }}>Paid (Advance)</th>
+                    <th style={{ padding: '12px 16px' }}>Balance Due</th>
                     <th style={{ padding: '12px 16px' }}>Date</th>
                     <th style={{ padding: '12px 16px' }}>Status</th>
                     <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredInvoices.map((inv) => (
-                    <tr key={inv.invoice_id} style={{ borderBottom: '1px solid var(--border-primary)' }}>
-                      <td style={{ padding: '12px 16px', fontWeight: 600, fontSize: '13px', fontFamily: 'monospace' }}>
-                        {inv.invoice_id.substring(0, 8).toUpperCase()}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                        <div>{inv.patient_name}</div>
-                        {(inv.patient_phone || inv.patient_mrn) && (
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                            {inv.patient_phone ? `📱 ${inv.patient_phone}` : ''} {inv.patient_mrn ? `| MRN: ${inv.patient_mrn}` : ''}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                        {inv.doctor_name || 'Hospital Doctor'}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontWeight: 700 }}>{formatCurrency(parseFloat(inv.total_amount))}</td>
-                      <td style={{ padding: '12px 16px' }}>{formatCurrency(parseFloat(inv.amount_paid))}</td>
-                      <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>
-                        {new Date(inv.created_at).toLocaleDateString()}
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{ 
-                          fontSize: '11px', padding: '2px 8px', borderRadius: '50px', fontWeight: 600,
-                          background: inv.status === 'Paid' ? 'rgba(16,185,129,0.15)' : 
-                                      inv.status === 'Cancelled' ? 'rgba(100,116,139,0.15)' : 
-                                      inv.status === 'Returned' ? 'rgba(245,158,11,0.15)' : 'rgba(244,63,94,0.15)',
-                          color: inv.status === 'Paid' ? 'var(--accent-success)' : 
-                                 inv.status === 'Cancelled' ? 'var(--text-muted)' : 
-                                 inv.status === 'Returned' ? 'var(--accent-warning)' : 'var(--accent-danger)'
-                        }}>
-                          {inv.status}
-                        </span>
-                      </td>
+                  {filteredInvoices.map((inv) => {
+                    const totalAmt = parseFloat(inv.total_amount || 0);
+                    const paidAmt = parseFloat(inv.amount_paid || 0);
+                    const dueAmt = inv.due_amount !== undefined && inv.due_amount !== null ? parseFloat(inv.due_amount) : Math.max(0, totalAmt - paidAmt);
+
+                    return (
+                      <tr key={inv.invoice_id} style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, fontSize: '13px', fontFamily: 'monospace' }}>
+                          {inv.invoice_id.substring(0, 8).toUpperCase()}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>
+                          <div>{inv.patient_name}</div>
+                          {(inv.patient_phone || inv.patient_mrn) && (
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              {inv.patient_phone ? `📱 ${inv.patient_phone}` : ''} {inv.patient_mrn ? `| MRN: ${inv.patient_mrn}` : ''}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                          {inv.doctor_name || 'Hospital Doctor'}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontWeight: 700 }}>{formatCurrency(totalAmt)}</td>
+                        <td style={{ padding: '12px 16px', color: '#16a34a', fontWeight: 600 }}>{formatCurrency(paidAmt)}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 700, color: dueAmt > 0 ? '#d97706' : '#16a34a' }}>
+                          {formatCurrency(dueAmt)}
+                        </td>
+                        <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>
+                          {new Date(inv.created_at).toLocaleDateString()}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{ 
+                            fontSize: '11px', padding: '3px 9px', borderRadius: '50px', fontWeight: 700,
+                            background: inv.status === 'Paid' ? 'rgba(34,197,94,0.15)' : 
+                                        inv.status === 'PartiallyPaid' ? 'rgba(245,158,11,0.15)' : 
+                                        inv.status === 'Cancelled' ? 'rgba(100,116,139,0.15)' : 
+                                        inv.status === 'Returned' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                            color: inv.status === 'Paid' ? '#16a34a' : 
+                                   inv.status === 'PartiallyPaid' ? '#d97706' : 
+                                   inv.status === 'Cancelled' ? 'var(--text-muted)' : 
+                                   inv.status === 'Returned' ? '#d97706' : '#dc2626',
+                            border: `1px solid ${inv.status === 'Paid' ? 'rgba(34,197,94,0.3)' : inv.status === 'PartiallyPaid' ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`
+                          }}>
+                            {inv.status === 'PartiallyPaid' ? 'Partially Paid / Due' : inv.status}
+                          </span>
+                        </td>
                       <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
                           <button 
@@ -1920,7 +1990,8 @@ const InvoiceGenerator: React.FC = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
                 </tbody>
               </table>
             </div>

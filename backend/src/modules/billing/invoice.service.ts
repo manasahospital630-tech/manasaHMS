@@ -11,16 +11,41 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
     const totalAmount = subtotal - (input.discount || 0) + (input.tax || 0);
     const patientResponsibility = totalAmount - (input.insuranceCoverage || 0);
 
-    const amountPaid = input.paymentStatus === 'Paid' ? patientResponsibility : 0.00;
-    const status = input.paymentStatus === 'Paid' ? 'Paid' : 'Unpaid';
-    const paymentMethod = input.paymentStatus === 'Paid' ? (input.paymentMethod || 'Cash') : null;
+    let amountPaid = 0.00;
+    if (input.paidAmount !== undefined && input.paidAmount !== null) {
+      amountPaid = Number(input.paidAmount);
+    } else if (input.amountPaid !== undefined && input.amountPaid !== null) {
+      amountPaid = Number(input.amountPaid);
+    } else if (input.paymentStatus === 'Paid') {
+      amountPaid = patientResponsibility;
+    }
+
+    if (amountPaid > patientResponsibility) {
+      amountPaid = patientResponsibility;
+    }
+    if (amountPaid < 0) {
+      amountPaid = 0.00;
+    }
+
+    const dueAmount = Math.max(0, patientResponsibility - amountPaid);
+
+    let status = 'Unpaid';
+    if (amountPaid >= patientResponsibility && patientResponsibility > 0) {
+      status = 'Paid';
+    } else if (amountPaid > 0) {
+      status = 'PartiallyPaid';
+    } else if (input.paymentStatus) {
+      status = input.paymentStatus;
+    }
+
+    const paymentMethod = amountPaid > 0 ? (input.paymentMethod || 'Cash') : (input.paymentMethod || null);
 
     const invoiceId = uuidv4();
     const invoiceNum = `INV-${Date.now().toString().slice(-6)}`;
 
     await client.query(
-      `INSERT INTO invoices (invoice_id, invoice_number, patient_id, encounter_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, status, payment_method, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      `INSERT INTO invoices (invoice_id, invoice_number, patient_id, encounter_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, due_amount, status, payment_method, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [
         invoiceId,
         invoiceNum,
@@ -32,6 +57,7 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
         input.insuranceCoverage || 0, 
         patientResponsibility,
         amountPaid,
+        dueAmount,
         status,
         paymentMethod,
         input.notes || null
@@ -235,14 +261,17 @@ export const recordPayment = async (id: string, input: RecordPaymentInput) => {
   if (existing.rows.length === 0) throw new AppError('Invoice not found.', 404);
 
   const invoice = existing.rows[0];
-  const newAmountPaid = parseFloat(invoice.amount_paid) + input.amountPaid;
-  const patientResponsibility = parseFloat(invoice.patient_responsibility);
+  const patientResponsibility = parseFloat(invoice.patient_responsibility || invoice.total_amount);
+  const currentPaid = parseFloat(invoice.amount_paid || 0);
+  const newAmountPaid = Math.min(patientResponsibility, currentPaid + input.amountPaid);
+  const newDueAmount = Math.max(0, patientResponsibility - newAmountPaid);
+
   let newStatus = 'PartiallyPaid';
-  if (newAmountPaid >= patientResponsibility) newStatus = 'Paid';
+  if (newDueAmount === 0 || newAmountPaid >= patientResponsibility) newStatus = 'Paid';
 
   await query(
-    `UPDATE invoices SET amount_paid = $1, status = $2, payment_method = $3 WHERE invoice_id = $4`,
-    [newAmountPaid, newStatus, input.paymentMethod, id]
+    `UPDATE invoices SET amount_paid = $1, due_amount = $2, status = $3, payment_method = $4 WHERE invoice_id = $5`,
+    [newAmountPaid, newDueAmount, newStatus, input.paymentMethod, id]
   );
 
   const updated = await query('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
@@ -267,21 +296,26 @@ export const returnInvoice = async (id: string) => {
   const existing = await query('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
   if (existing.rows.length === 0) throw new AppError('Invoice not found.', 404);
 
-  await query(`UPDATE invoices SET status = 'Returned', amount_paid = 0.00 WHERE invoice_id = $1`, [id]);
+  const invoice = existing.rows[0];
+  const patientResponsibility = parseFloat(invoice.patient_responsibility || invoice.total_amount);
+
+  await query(`UPDATE invoices SET status = 'Returned', amount_paid = 0.00, due_amount = $1 WHERE invoice_id = $2`, [patientResponsibility, id]);
   const updated = await query('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
   return updated.rows[0];
 };
 
-export const updateInvoiceStatus = async (id: string, status: 'Paid' | 'Unpaid', paymentMethod: string) => {
+export const updateInvoiceStatus = async (id: string, status: 'Paid' | 'Unpaid' | 'PartiallyPaid', paymentMethod: string) => {
   const existing = await query('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
   if (existing.rows.length === 0) throw new AppError('Invoice not found.', 404);
 
   const invoice = existing.rows[0];
-  const targetAmountPaid = status === 'Paid' ? parseFloat(invoice.total_amount) : 0.00;
+  const patientResponsibility = parseFloat(invoice.patient_responsibility || invoice.total_amount);
+  const targetAmountPaid = status === 'Paid' ? patientResponsibility : (status === 'Unpaid' ? 0.00 : parseFloat(invoice.amount_paid || 0));
+  const targetDueAmount = Math.max(0, patientResponsibility - targetAmountPaid);
 
   await query(
-    `UPDATE invoices SET amount_paid = $1, status = $2, payment_method = $3 WHERE invoice_id = $4`,
-    [targetAmountPaid, status, paymentMethod, id]
+    `UPDATE invoices SET amount_paid = $1, due_amount = $2, status = $3, payment_method = $4 WHERE invoice_id = $5`,
+    [targetAmountPaid, targetDueAmount, status, paymentMethod, id]
   );
 
   // Sync diagnostic test order payment status if matching

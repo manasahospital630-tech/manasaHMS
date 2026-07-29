@@ -15,8 +15,10 @@ exports.createInvoiceSchema = zod_1.z.object({
     tax: zod_1.z.number().min(0).optional().default(0),
     insuranceCoverage: zod_1.z.number().min(0).optional().default(0),
     notes: zod_1.z.string().optional(),
-    paymentStatus: zod_1.z.enum(['Paid', 'Unpaid']).optional().default('Unpaid'),
+    paymentStatus: zod_1.z.enum(['Paid', 'Unpaid', 'PartiallyPaid']).optional().default('Unpaid'),
     paymentMethod: zod_1.z.string().optional(),
+    paidAmount: zod_1.z.number().min(0).optional(),
+    amountPaid: zod_1.z.number().min(0).optional(),
 });
 exports.recordPaymentSchema = zod_1.z.object({
     amountPaid: zod_1.z.number().min(0.01, { message: 'Payment amount must be positive' }),

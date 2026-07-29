@@ -13,8 +13,10 @@ export const createInvoiceSchema = z.object({
   tax: z.number().min(0).optional().default(0),
   insuranceCoverage: z.number().min(0).optional().default(0),
   notes: z.string().optional(),
-  paymentStatus: z.enum(['Paid', 'Unpaid']).optional().default('Unpaid'),
+  paymentStatus: z.enum(['Paid', 'Unpaid', 'PartiallyPaid']).optional().default('Unpaid'),
   paymentMethod: z.string().optional(),
+  paidAmount: z.number().min(0).optional(),
+  amountPaid: z.number().min(0).optional(),
 });
 
 export const recordPaymentSchema = z.object({
