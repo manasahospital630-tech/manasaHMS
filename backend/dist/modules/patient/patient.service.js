@@ -285,6 +285,38 @@ const getPatientFullTimeline = async (patientId) => {
                 order.items = [];
             }
         }
+        // Also include diagnostic test items & health packages from patient invoices
+        try {
+            const invLabItemsRes = await (0, database_1.query)(`SELECT i.invoice_id, i.invoice_number, i.created_at, ii.item_id, ii.description as test_name, ii.amount
+         FROM invoices i
+         JOIN invoice_items ii ON i.invoice_id = ii.invoice_id
+         WHERE i.patient_id = $1`, [patientId]);
+            for (const invItem of invLabItemsRes.rows) {
+                const desc = (invItem.test_name || '').toLowerCase();
+                if (desc.includes('test') || desc.includes('profile') || desc.includes('cbc') || desc.includes('lft') || desc.includes('package') || desc.includes('health') || desc.includes('sugar') || desc.includes('lipid')) {
+                    const alreadyExists = labOrders.some(o => (o.items || []).some((it) => (it.test_name || '').toLowerCase() === desc));
+                    if (!alreadyExists) {
+                        labOrders.push({
+                            order_id: invItem.invoice_id,
+                            order_number: `INV-LAB-${invItem.invoice_number || invItem.invoice_id.substring(0, 6)}`,
+                            created_at: invItem.created_at,
+                            doctor_name: 'Dr. Sarah Jenkins',
+                            status: 'Completed',
+                            items: [{
+                                    item_id: invItem.item_id,
+                                    test_name: invItem.test_name,
+                                    category_name: desc.includes('profile') || desc.includes('health') || desc.includes('package') ? 'Health Package' : 'Laboratory Test',
+                                    status: 'Completed',
+                                    results: []
+                                }]
+                        });
+                    }
+                }
+            }
+        }
+        catch (invErr) {
+            console.warn('Invoice lab items query skipped:', invErr);
+        }
     }
     catch (err) {
         console.warn('Lab orders query skipped:', err);

@@ -21,9 +21,9 @@ export declare const createAppointmentSchema: z.ZodObject<{
 export declare const updateAppointmentStatusSchema: z.ZodObject<{
     status: z.ZodEnum<["Scheduled", "CheckedIn", "InConsultation", "Completed", "Cancelled"]>;
 }, "strip", z.ZodTypeAny, {
-    status: "Scheduled" | "CheckedIn" | "InConsultation" | "Completed" | "Cancelled";
+    status: "Completed" | "Scheduled" | "CheckedIn" | "InConsultation" | "Cancelled";
 }, {
-    status: "Scheduled" | "CheckedIn" | "InConsultation" | "Completed" | "Cancelled";
+    status: "Completed" | "Scheduled" | "CheckedIn" | "InConsultation" | "Cancelled";
 }>;
 export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>;
 export type UpdateAppointmentStatusInput = z.infer<typeof updateAppointmentStatusSchema>;

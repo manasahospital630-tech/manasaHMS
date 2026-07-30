@@ -36,6 +36,36 @@ function evaluateParameterRow(paramName: string, observedVal: any, refMinMax: st
 
 const renderReportTable = (testNameStr: string, resultsArray: any[]) => {
   const testTitle = testNameStr || 'LABORATORY INVESTIGATION REPORT';
+  const nameUpper = testTitle.toUpperCase();
+
+  // If it's a Health Package or Master Profile containing multiple sub-tests:
+  if ((nameUpper.includes('EXECUTIVE') || nameUpper.includes('HEALTH PROFILE') || nameUpper.includes('PACKAGE') || nameUpper.includes('MASTER') || nameUpper.includes('CHECKUP')) && (!resultsArray || resultsArray.length === 0)) {
+    const subTests = [
+      'COMPLETE BLOOD COUNT (CBC)',
+      'LIVER FUNCTION TEST (LFT)',
+      'LIPID PROFILE TEST',
+      'FASTING BLOOD SUGAR (FBS)',
+      'THYROID PROFILE (T3, T4, TSH)'
+    ];
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '14px' }}>
+        <div style={{ background: '#eff6ff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #bfdbfe', fontSize: '13px', fontWeight: 800, color: '#1e40af' }}>
+          📦 Health Package Diagnostic Tests & Findings:
+        </div>
+        {subTests.map((stName: string, sIdx: number) => (
+          <div key={sIdx}>
+            {renderSingleReportTable(stName, [])}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return renderSingleReportTable(testTitle, resultsArray);
+};
+
+const renderSingleReportTable = (testTitle: string, resultsArray: any[]) => {
   let paramRows: any[] = [];
 
   if (resultsArray && resultsArray.length > 0) {
@@ -72,6 +102,12 @@ const renderReportTable = (testNameStr: string, resultsArray: any[]) => {
         evaluateParameterRow('Triglycerides', '140', '50 - 150', 'mg/dL'),
         evaluateParameterRow('HDL Cholesterol', '45', '40 - 60', 'mg/dL'),
         evaluateParameterRow('LDL Cholesterol', '105', '50 - 130', 'mg/dL')
+      ];
+    } else if (nameUpper.includes('THYROID') || nameUpper.includes('TSH')) {
+      paramRows = [
+        evaluateParameterRow('Total T3', '1.2', '0.8 - 2.0', 'ng/mL'),
+        evaluateParameterRow('Total T4', '8.5', '5.1 - 14.1', 'µg/dL'),
+        evaluateParameterRow('TSH (Thyroid Stimulating Hormone)', '2.4', '0.4 - 4.2', 'µIU/mL')
       ];
     } else {
       paramRows = [
