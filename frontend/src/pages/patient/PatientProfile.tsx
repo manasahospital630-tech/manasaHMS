@@ -458,23 +458,41 @@ export const PatientProfile: React.FC = () => {
   const timelineEvents = useMemo(() => {
     const events: any[] = [];
 
-    // 1. Lab Test Orders Events
-    (data?.labOrders || []).forEach((order: any) => {
+    // 1. Every Individual Diagnostic Test Report Date-Wise
+    (allTestItems || []).forEach((item: any) => {
       events.push({
-        type: 'lab_order',
-        timestamp: new Date(order.created_at || Date.now()).getTime(),
-        dateStr: order.created_at,
-        order_id: order.order_id,
-        order_number: order.order_number || order.order_id?.substring(0, 8),
-        doctor_name: order.doctor_name || 'Consulting Physician',
-        priority: order.priority || 'Routine',
-        status: order.status || 'Completed',
-        payment_status: order.payment_status || 'Paid',
-        items: order.items || []
+        type: 'lab_report',
+        timestamp: new Date(item.order_date || item.created_at || Date.now()).getTime(),
+        dateStr: item.order_date || item.created_at,
+        item_id: item.item_id,
+        order_number: item.order_number,
+        test_name: item.test_name || item.name || 'Laboratory Test',
+        category_name: item.category_name || 'Diagnostics',
+        doctor_name: item.doctor_name || 'Consulting Physician',
+        status: item.order_status || item.status || 'Completed',
+        results: item.results || []
       });
     });
 
-    // 2. Vitals & Triage Visits
+    // 2. Lab Orders Grouped (if any non-itemized orders exist)
+    (data?.labOrders || []).forEach((order: any) => {
+      if (!order.items || order.items.length === 0) {
+        events.push({
+          type: 'lab_order',
+          timestamp: new Date(order.created_at || Date.now()).getTime(),
+          dateStr: order.created_at,
+          order_id: order.order_id,
+          order_number: order.order_number || order.order_id?.substring(0, 8),
+          doctor_name: order.doctor_name || 'Consulting Physician',
+          priority: order.priority || 'Routine',
+          status: order.status || 'Completed',
+          payment_status: order.payment_status || 'Paid',
+          items: order.items || []
+        });
+      }
+    });
+
+    // 3. Vitals & Triage Visits
     (data?.vitalsHistory || []).forEach((v: any) => {
       events.push({
         type: 'vital',
@@ -494,7 +512,7 @@ export const PatientProfile: React.FC = () => {
       });
     });
 
-    // 3. Consultation Encounters
+    // 4. Consultation Encounters
     (data?.encounters || []).forEach((enc: any) => {
       events.push({
         type: 'encounter',
@@ -508,9 +526,9 @@ export const PatientProfile: React.FC = () => {
       });
     });
 
-    // Sort descending (newest first)
+    // Sort descending (newest date first)
     return events.sort((a, b) => b.timestamp - a.timestamp);
-  }, [data]);
+  }, [allTestItems, data]);
 
   if (loading) {
     return (
@@ -839,7 +857,43 @@ export const PatientProfile: React.FC = () => {
                 day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
               });
 
-              // LAB ORDER TIMELINE ITEM
+              // INDIVIDUAL DATE-WISE LAB REPORT TIMELINE ITEM
+              if (evt.type === 'lab_report') {
+                return (
+                  <div key={idx} style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+                    {/* Header Bar */}
+                    <div style={{ background: '#f0f9ff', borderBottom: '1px solid #bae6fd', margin: '-20px -20px 16px -20px', padding: '14px 20px', borderRadius: '16px 16px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div style={{ fontWeight: 800, fontSize: '14px', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        🧪 Diagnostic Test Report: {evt.test_name}
+                        <span style={{ fontSize: '11px', background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
+                          {evt.status}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#0284c7', fontWeight: 600 }}>
+                        📅 Date: {eventDate} | Ref Order #: {evt.order_number} | Category: {evt.category_name}
+                      </div>
+                    </div>
+
+                    {/* Render Report Table matching exact screenshot layout */}
+                    {renderReportTable(evt.test_name, evt.results)}
+
+                    {/* PDF View / Download Action Footer */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #f1f5f9', marginTop: '14px' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                        Physician: <strong>Dr. {evt.doctor_name}</strong>
+                      </div>
+                      <button 
+                        onClick={() => window.open(`/public/reports/${evt.item_id}`, '_blank')}
+                        style={{ background: '#2563eb', color: '#ffffff', border: 'none', padding: '8px 18px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <FileText size={15} /> View Official Report PDF
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              // GROUPED LAB ORDER TIMELINE ITEM
               if (evt.type === 'lab_order') {
                 return (
                   <div key={idx} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
