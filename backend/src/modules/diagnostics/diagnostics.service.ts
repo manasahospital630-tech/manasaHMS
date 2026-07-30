@@ -403,18 +403,28 @@ export const getOrders = async () => {
            u.first_name as doc_first, u.last_name as doc_last,
            (SELECT CASE WHEN COUNT(*) > 0 THEN 'IP' ELSE 'OP' END FROM ip_admissions ip WHERE ip.patient_id COLLATE utf8mb4_general_ci = o.patient_id COLLATE utf8mb4_general_ci AND ip.status COLLATE utf8mb4_general_ci = 'Admitted') as patient_type,
            COALESCE(
-             (SELECT inv.balance_amount FROM billing_invoices inv 
+             (SELECT inv.due_amount FROM invoices inv 
               WHERE inv.invoice_id COLLATE utf8mb4_general_ci = LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1))
                  OR inv.invoice_id COLLATE utf8mb4_general_ci LIKE CONCAT(LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1)), '%')
                  OR inv.invoice_number COLLATE utf8mb4_general_ci = o.order_number COLLATE utf8mb4_general_ci
               LIMIT 1),
+             (SELECT binv.balance_amount FROM billing_invoices binv 
+              WHERE binv.invoice_id COLLATE utf8mb4_general_ci = LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1))
+                 OR binv.invoice_id COLLATE utf8mb4_general_ci LIKE CONCAT(LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1)), '%')
+                 OR binv.invoice_number COLLATE utf8mb4_general_ci = o.order_number COLLATE utf8mb4_general_ci
+              LIMIT 1),
              0
            ) as due_amount,
            COALESCE(
-             (SELECT inv.invoice_id FROM billing_invoices inv 
+             (SELECT inv.invoice_id FROM invoices inv 
               WHERE inv.invoice_id COLLATE utf8mb4_general_ci = LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1))
                  OR inv.invoice_id COLLATE utf8mb4_general_ci LIKE CONCAT(LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1)), '%')
                  OR inv.invoice_number COLLATE utf8mb4_general_ci = o.order_number COLLATE utf8mb4_general_ci
+              LIMIT 1),
+             (SELECT binv.invoice_id FROM billing_invoices binv 
+              WHERE binv.invoice_id COLLATE utf8mb4_general_ci = LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1))
+                 OR binv.invoice_id COLLATE utf8mb4_general_ci LIKE CONCAT(LOWER(SUBSTRING_INDEX(o.order_number, 'BILL-LAB-', -1)), '%')
+                 OR binv.invoice_number COLLATE utf8mb4_general_ci = o.order_number COLLATE utf8mb4_general_ci
               LIMIT 1),
              NULL
            ) as invoice_id

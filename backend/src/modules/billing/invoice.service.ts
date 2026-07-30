@@ -319,10 +319,14 @@ export const recordPayment = async (id: string, input: RecordPaymentInput) => {
     [newAmountPaid, newDueAmount, newStatus, input.paymentMethod, id]
   );
 
-  // Sync diagnostic test order payment status if matching
+  // Sync diagnostic test order payment status & billing_invoices if matching
   const orderNum = `BILL-LAB-${id.substring(0, 8).toUpperCase()}`;
   try {
     await query(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2`, [newStatus, orderNum]);
+    await query(
+      `UPDATE billing_invoices SET paid_amount = $1, balance_amount = $2, status = $3, payment_mode = $4 WHERE invoice_id COLLATE utf8mb4_general_ci = $5 COLLATE utf8mb4_general_ci`,
+      [newAmountPaid, newDueAmount, newStatus, input.paymentMethod, id]
+    );
   } catch (e) {
     // Ignore
   }
@@ -396,9 +400,17 @@ export const updateInvoiceStatus = async (id: string, status: 'Paid' | 'Unpaid' 
     [targetAmountPaid, targetDueAmount, status, paymentMethod, id]
   );
 
-  // Sync diagnostic test order payment status if matching
+  // Sync diagnostic test order payment status & billing_invoices if matching
   const orderNum = `BILL-LAB-${id.substring(0, 8).toUpperCase()}`;
-  await query(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2`, [status, orderNum]);
+  try {
+    await query(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2`, [status, orderNum]);
+    await query(
+      `UPDATE billing_invoices SET paid_amount = $1, balance_amount = $2, status = $3, payment_mode = $4 WHERE invoice_id COLLATE utf8mb4_general_ci = $5 COLLATE utf8mb4_general_ci`,
+      [targetAmountPaid, targetDueAmount, status, paymentMethod, id]
+    );
+  } catch (e) {
+    // Ignore
+  }
 
   const updated = await query('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
   return updated.rows[0];

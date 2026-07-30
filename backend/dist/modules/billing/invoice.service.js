@@ -269,10 +269,11 @@ const recordPayment = async (id, input) => {
     if (newDueAmount === 0 || newAmountPaid >= patientResponsibility)
         newStatus = 'Paid';
     await (0, database_1.query)(`UPDATE invoices SET amount_paid = $1, due_amount = $2, status = $3, payment_method = $4 WHERE invoice_id = $5`, [newAmountPaid, newDueAmount, newStatus, input.paymentMethod, id]);
-    // Sync diagnostic test order payment status if matching
+    // Sync diagnostic test order payment status & billing_invoices if matching
     const orderNum = `BILL-LAB-${id.substring(0, 8).toUpperCase()}`;
     try {
         await (0, database_1.query)(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2`, [newStatus, orderNum]);
+        await (0, database_1.query)(`UPDATE billing_invoices SET paid_amount = $1, balance_amount = $2, status = $3, payment_mode = $4 WHERE invoice_id COLLATE utf8mb4_general_ci = $5 COLLATE utf8mb4_general_ci`, [newAmountPaid, newDueAmount, newStatus, input.paymentMethod, id]);
     }
     catch (e) {
         // Ignore
@@ -335,9 +336,15 @@ const updateInvoiceStatus = async (id, status, paymentMethod) => {
     const targetAmountPaid = status === 'Paid' ? patientResponsibility : (status === 'Unpaid' ? 0.00 : parseFloat(invoice.amount_paid || 0));
     const targetDueAmount = Math.max(0, patientResponsibility - targetAmountPaid);
     await (0, database_1.query)(`UPDATE invoices SET amount_paid = $1, due_amount = $2, status = $3, payment_method = $4 WHERE invoice_id = $5`, [targetAmountPaid, targetDueAmount, status, paymentMethod, id]);
-    // Sync diagnostic test order payment status if matching
+    // Sync diagnostic test order payment status & billing_invoices if matching
     const orderNum = `BILL-LAB-${id.substring(0, 8).toUpperCase()}`;
-    await (0, database_1.query)(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2`, [status, orderNum]);
+    try {
+        await (0, database_1.query)(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2`, [status, orderNum]);
+        await (0, database_1.query)(`UPDATE billing_invoices SET paid_amount = $1, balance_amount = $2, status = $3, payment_mode = $4 WHERE invoice_id COLLATE utf8mb4_general_ci = $5 COLLATE utf8mb4_general_ci`, [targetAmountPaid, targetDueAmount, status, paymentMethod, id]);
+    }
+    catch (e) {
+        // Ignore
+    }
     const updated = await (0, database_1.query)('SELECT * FROM invoices WHERE invoice_id = $1', [id]);
     return updated.rows[0];
 };
