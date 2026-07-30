@@ -308,15 +308,15 @@ export const recordTriageVitals = async (input: {
   };
 
   if (apptId) {
-    const apptRes = await query(
+    await query(
       `UPDATE appointments 
-       SET vitals = $1::jsonb, has_vitals_recorded = TRUE 
-       WHERE appointment_id = $2 
-       RETURNING *`,
+       SET vitals = $1, has_vitals_recorded = TRUE 
+       WHERE appointment_id = $2`,
       [JSON.stringify(vitalRecord), apptId]
     );
-    if (apptRes.rows.length > 0) {
-      apptRow = apptRes.rows[0];
+    const fetchUpdated = await query(`SELECT * FROM appointments WHERE appointment_id = $1`, [apptId]);
+    if (fetchUpdated.rows.length > 0) {
+      apptRow = fetchUpdated.rows[0];
     }
   }
 
@@ -327,7 +327,15 @@ export const recordTriageVitals = async (input: {
   );
 
   if (patRes.rows.length > 0) {
-    let history = patRes.rows[0].vitals_history || [];
+    let rawHist = patRes.rows[0].vitals_history;
+    let history: any[] = [];
+    if (rawHist) {
+      if (typeof rawHist === 'string') {
+        try { history = JSON.parse(rawHist); } catch { history = []; }
+      } else if (Array.isArray(rawHist)) {
+        history = rawHist;
+      }
+    }
     if (!Array.isArray(history)) history = [];
     
     // Check if entry for this opId already exists and update or append
@@ -344,7 +352,7 @@ export const recordTriageVitals = async (input: {
 
     await query(
       `UPDATE patients 
-       SET current_vitals = $1::jsonb, vitals_history = $2::jsonb 
+       SET current_vitals = $1, vitals_history = $2 
        WHERE patient_id = $3`,
       [JSON.stringify(vitalRecord), JSON.stringify(history), patientId]
     );

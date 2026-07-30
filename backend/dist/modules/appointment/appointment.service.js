@@ -213,18 +213,32 @@ const recordTriageVitals = async (input) => {
         tests: tests || ['Serum Electrolytes (Na, K, Cl)']
     };
     if (apptId) {
-        const apptRes = await (0, database_1.query)(`UPDATE appointments 
-       SET vitals = $1::jsonb, has_vitals_recorded = TRUE 
-       WHERE appointment_id = $2 
-       RETURNING *`, [JSON.stringify(vitalRecord), apptId]);
-        if (apptRes.rows.length > 0) {
-            apptRow = apptRes.rows[0];
+        await (0, database_1.query)(`UPDATE appointments 
+       SET vitals = $1, has_vitals_recorded = TRUE 
+       WHERE appointment_id = $2`, [JSON.stringify(vitalRecord), apptId]);
+        const fetchUpdated = await (0, database_1.query)(`SELECT * FROM appointments WHERE appointment_id = $1`, [apptId]);
+        if (fetchUpdated.rows.length > 0) {
+            apptRow = fetchUpdated.rows[0];
         }
     }
     // Auto-Sync to Patient Master Timeline in DB
     const patRes = await (0, database_1.query)(`SELECT current_vitals, vitals_history FROM patients WHERE patient_id = $1`, [patientId]);
     if (patRes.rows.length > 0) {
-        let history = patRes.rows[0].vitals_history || [];
+        let rawHist = patRes.rows[0].vitals_history;
+        let history = [];
+        if (rawHist) {
+            if (typeof rawHist === 'string') {
+                try {
+                    history = JSON.parse(rawHist);
+                }
+                catch {
+                    history = [];
+                }
+            }
+            else if (Array.isArray(rawHist)) {
+                history = rawHist;
+            }
+        }
         if (!Array.isArray(history))
             history = [];
         // Check if entry for this opId already exists and update or append
@@ -240,7 +254,7 @@ const recordTriageVitals = async (input) => {
             history.push(vitalRecord);
         }
         await (0, database_1.query)(`UPDATE patients 
-       SET current_vitals = $1::jsonb, vitals_history = $2::jsonb 
+       SET current_vitals = $1, vitals_history = $2 
        WHERE patient_id = $3`, [JSON.stringify(vitalRecord), JSON.stringify(history), patientId]);
     }
     return {

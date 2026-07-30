@@ -315,6 +315,34 @@ const getPatientFullTimeline = async (patientId) => {
         console.warn('Appointments query skipped:', err);
         upcomingAppointments = [];
     }
+    let parsedVitalsHistory = [];
+    if (patient.vitals_history) {
+        if (typeof patient.vitals_history === 'string') {
+            try {
+                parsedVitalsHistory = JSON.parse(patient.vitals_history);
+            }
+            catch {
+                parsedVitalsHistory = [];
+            }
+        }
+        else if (Array.isArray(patient.vitals_history)) {
+            parsedVitalsHistory = patient.vitals_history;
+        }
+    }
+    let parsedCurrentVitals = {};
+    if (patient.current_vitals) {
+        if (typeof patient.current_vitals === 'string') {
+            try {
+                parsedCurrentVitals = JSON.parse(patient.current_vitals);
+            }
+            catch {
+                parsedCurrentVitals = {};
+            }
+        }
+        else if (typeof patient.current_vitals === 'object') {
+            parsedCurrentVitals = patient.current_vitals;
+        }
+    }
     return {
         patient,
         encounters,
@@ -322,8 +350,8 @@ const getPatientFullTimeline = async (patientId) => {
         activeMedications,
         labOrders,
         vitalsSeries,
-        vitalsHistory: patient.vitals_history || [],
-        currentVitals: patient.current_vitals || {},
+        vitalsHistory: parsedVitalsHistory,
+        currentVitals: parsedCurrentVitals,
         upcomingAppointments
     };
 };

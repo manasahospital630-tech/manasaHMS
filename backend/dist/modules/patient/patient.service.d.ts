@@ -26,7 +26,7 @@ export declare const getPatientFullTimeline: (patientId: string) => Promise<{
     activeMedications: any[];
     labOrders: any[];
     vitalsSeries: any[];
-    vitalsHistory: any;
+    vitalsHistory: any[];
     currentVitals: any;
     upcomingAppointments: any[];
 }>;
