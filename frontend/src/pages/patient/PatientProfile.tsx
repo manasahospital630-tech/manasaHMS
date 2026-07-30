@@ -308,6 +308,91 @@ export const PatientProfile: React.FC = () => {
     };
   }, [chartPoints, metricTab]);
 
+  // Computed Arrays for Tabs & Timeline
+  const allTestItems = useMemo(() => {
+    const items: any[] = [];
+    (data?.labOrders || []).forEach((order: any) => {
+      (order.items || []).forEach((item: any) => {
+        items.push({
+          ...item,
+          order_id: order.order_id,
+          order_number: order.order_number || order.order_id?.substring(0, 8),
+          order_date: order.created_at,
+          doctor_name: order.doctor_name || 'Consulting Physician',
+          payment_status: order.payment_status || 'Paid',
+          order_status: order.status || 'Completed'
+        });
+      });
+    });
+    return items;
+  }, [data?.labOrders]);
+
+  const imagingItems = useMemo(() => {
+    return allTestItems.filter((item: any) => {
+      const name = (item.test_name || item.name || '').toUpperCase();
+      const cat = (item.category_name || '').toUpperCase();
+      return cat.includes('IMAGING') || cat.includes('RADIOLOGY') || cat.includes('X-RAY') || cat.includes('MRI') || cat.includes('CT') || cat.includes('ULTRASOUND') ||
+             name.includes('X-RAY') || name.includes('MRI') || name.includes('CT') || name.includes('ULTRASOUND') || name.includes('USG') || name.includes('ECG') || name.includes('ECHO');
+    });
+  }, [allTestItems]);
+
+  const timelineEvents = useMemo(() => {
+    const events: any[] = [];
+
+    // 1. Lab Test Orders Events
+    (data?.labOrders || []).forEach((order: any) => {
+      events.push({
+        type: 'lab_order',
+        timestamp: new Date(order.created_at || Date.now()).getTime(),
+        dateStr: order.created_at,
+        order_id: order.order_id,
+        order_number: order.order_number || order.order_id?.substring(0, 8),
+        doctor_name: order.doctor_name || 'Consulting Physician',
+        priority: order.priority || 'Routine',
+        status: order.status || 'Completed',
+        payment_status: order.payment_status || 'Paid',
+        items: order.items || []
+      });
+    });
+
+    // 2. Vitals & Triage Visits
+    (data?.vitalsHistory || []).forEach((v: any) => {
+      events.push({
+        type: 'vital',
+        timestamp: new Date(v.recordedAt || v.visitDate || Date.now()).getTime(),
+        dateStr: v.recordedAt || v.visitDate,
+        opBookingId: v.opBookingId || 'OP-VISIT',
+        weight: v.weight,
+        temperature: v.temperature,
+        bloodPressure: v.bloodPressure,
+        heartRate: v.heartRate,
+        oxygenSaturation: v.oxygenSaturation,
+        glucoseLevel: v.glucoseLevel,
+        glucoseType: v.glucoseType,
+        notes: v.notes,
+        doctorNotes: v.doctorNotes,
+        tests: v.tests || []
+      });
+    });
+
+    // 3. Consultation Encounters
+    (data?.encounters || []).forEach((enc: any) => {
+      events.push({
+        type: 'encounter',
+        timestamp: new Date(enc.encounter_timestamp || enc.created_at || Date.now()).getTime(),
+        dateStr: enc.encounter_timestamp || enc.created_at,
+        encounter_id: enc.encounter_id,
+        provider_name: enc.provider_name || 'Consulting Physician',
+        chief_complaint: enc.chief_complaint,
+        diagnoses: enc.diagnoses || [],
+        notes: enc.notes
+      });
+    });
+
+    // Sort descending (newest first)
+    return events.sort((a, b) => b.timestamp - a.timestamp);
+  }, [data]);
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '500px', flexDirection: 'column', gap: '16px' }}>
@@ -348,11 +433,11 @@ export const PatientProfile: React.FC = () => {
         <div style={{ display: 'flex', gap: '6px', background: '#e2e8f0', padding: '4px', borderRadius: '30px' }}>
           {[
             { id: 'overview', label: 'Overview' },
-            { id: 'history', label: 'History' },
-            { id: 'appointments', label: 'Appointments' },
-            { id: 'reports', label: `Medical Reports ${labOrders.length > 0 ? labOrders.length : '3'}` },
-            { id: 'tests', label: 'Medical Tests' },
-            { id: 'imaging', label: 'Imaging' }
+            { id: 'history', label: `History (${timelineEvents.length})` },
+            { id: 'appointments', label: `Appointments (${(data?.upcomingAppointments || []).length})` },
+            { id: 'reports', label: `Medical Reports (${allTestItems.length})` },
+            { id: 'tests', label: `Medical Tests (${allTestItems.length})` },
+            { id: 'imaging', label: `Imaging (${imagingItems.length})` }
           ].map(t => (
             <button
               key={t.id}
@@ -378,7 +463,7 @@ export const PatientProfile: React.FC = () => {
         {/* Right Action Icons */}
         <div style={{ display: 'flex', gap: '10px' }}>
           <button onClick={() => window.print()} style={{ background: '#ffffff', border: '1px solid #cbd5e1', padding: '8px 12px', borderRadius: '10px', cursor: 'pointer', color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Download size={16} />
+            <Download size={16} /> Print Profile
           </button>
           <button style={{ background: '#ffffff', border: '1px solid #cbd5e1', padding: '8px 12px', borderRadius: '10px', cursor: 'pointer', color: '#475569' }}>
             <Bell size={16} />
@@ -431,8 +516,8 @@ export const PatientProfile: React.FC = () => {
                 <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
                   {patient.gender || 'Female'}, {getPatientAge(patient.date_of_birth, patient.age)}
                 </div>
-                <span style={{ display: 'inline-block', marginTop: '6px', background: '#fef3c7', color: '#b45309', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>
-                  Post-Surgery
+                <span style={{ display: 'inline-block', marginTop: '6px', background: '#dbeafe', color: '#1d4ed8', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>
+                  Active Patient
                 </span>
               </div>
             </div>
@@ -440,11 +525,11 @@ export const PatientProfile: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '16px', fontSize: '12px', color: '#64748b' }}>
               <div>
                 <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '2px' }}>Primary Physician</div>
-                <strong style={{ color: '#1e293b', fontSize: '13px' }}>Dr. {patient.doctor_first_name || 'Alex'} {patient.doctor_last_name || 'Nguyen'}</strong>
+                <strong style={{ color: '#1e293b', fontSize: '13px' }}>Dr. {patient.doctor_first_name || 'Sandeep'} {patient.doctor_last_name || 'Gunde'}</strong>
               </div>
               <div>
                 <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '2px' }}>Patient MRN</div>
-                <strong style={{ color: '#1e293b', fontFamily: 'monospace', fontSize: '13px' }}>#{patient.medical_record_number || 'PL12234213'}</strong>
+                <strong style={{ color: '#1e293b', fontFamily: 'monospace', fontSize: '13px' }}>#{patient.medical_record_number || patient.mrn || '—'}</strong>
               </div>
             </div>
           </div>
@@ -453,63 +538,40 @@ export const PatientProfile: React.FC = () => {
           <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
             <h3 style={{ fontSize: '14px', fontWeight: 800, margin: '0 0 14px 0', color: '#0f172a' }}>Allergies</h3>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {allergiesList.map((alg: string, idx: number) => (
-                <div key={idx} style={{ background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0284c7', fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0284c7' }} />
-                  {alg}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Latest Problems Card */}
-          <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, color: '#0f172a' }}>Latest Problems</h3>
-              <a href="#problems" style={{ fontSize: '12px', color: '#3b82f6', fontWeight: 700, textDecoration: 'none' }}>View All</a>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {['Degenerative Disc Changes', 'Spinal Canal Narrowing'].map((prob, idx) => (
-                <div key={idx} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', fontWeight: 600, color: '#334155' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Info size={16} color="#94a3b8" />
-                    <span>{prob}</span>
+              {allergiesList.length > 0 ? (
+                allergiesList.map((alg: string, idx: number) => (
+                  <div key={idx} style={{ background: '#f0f9ff', border: '1px solid #bae6fd', color: '#0284c7', fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0284c7' }} />
+                    {alg}
                   </div>
-                  <ChevronRight size={16} color="#cbd5e1" />
-                </div>
-              ))}
+                ))
+              ) : (
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>No allergies recorded.</span>
+              )}
             </div>
           </div>
 
-          {/* Upcoming Appointment Card */}
+          {/* Diagnostic Test Orders Overview */}
           <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-              <Calendar size={18} color="#3b82f6" />
-              <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, color: '#0f172a' }}>Upcoming Appointment</h3>
-            </div>
-            <p style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>
-              Follow-Up Visit to Review Heart Health
-            </p>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', marginBottom: '14px' }}>
-              <div>
-                <span style={{ background: '#dcfce7', color: '#15803d', fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', marginRight: '6px' }}>Confirmed</span>
-                <span style={{ color: '#64748b' }}>Dr. Alicia Kim</span>
-              </div>
-              <span style={{ fontWeight: 700, color: '#0f172a' }}>July 25, 2026</span>
-            </div>
-
-            {/* Timeline Schedule list */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '8px', borderLeft: '2px solid #e2e8f0', fontSize: '11px', color: '#64748b' }}>
-              <div>
-                <strong style={{ color: '#0f172a' }}>10:30 - 10:35</strong> Check-in and Vitals
-              </div>
-              <div>
-                <strong style={{ color: '#0f172a' }}>10:35 - 10:50</strong> Doctor Consultation
-              </div>
-              <div>
-                <strong style={{ color: '#0f172a' }}>10:50 - 11:00</strong> ECG Test and Notes Review
-              </div>
+            <h3 style={{ fontSize: '14px', fontWeight: 800, margin: '0 0 14px 0', color: '#0f172a' }}>Recent Test Orders</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {allTestItems.slice(0, 4).map((item: any, idx: number) => (
+                <div key={idx} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{item.test_name || item.name || 'Diagnostic Test'}</div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>Order #{item.order_number}</div>
+                  </div>
+                  <button 
+                    onClick={() => window.open(`/public/reports/${item.item_id}`, '_blank')}
+                    style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    View Report
+                  </button>
+                </div>
+              ))}
+              {allTestItems.length === 0 && (
+                <div style={{ fontSize: '12px', color: '#94a3b8' }}>No lab test orders recorded yet.</div>
+              )}
             </div>
           </div>
 
@@ -525,84 +587,79 @@ export const PatientProfile: React.FC = () => {
             
             {/* Weight Card */}
             <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                Weight
-              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Weight</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '12px' }}>
                 <span style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a' }}>{weight}</span>
-                <span style={{ background: '#dcfce7', color: '#166534', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>-5%</span>
               </div>
             </div>
 
             {/* Temperature Card */}
             <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                Temperature
-              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Temperature</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '12px' }}>
                 <span style={{ fontSize: '24px', fontWeight: 800, color: isTempHigh ? '#dc2626' : '#0f172a' }}>{temp}</span>
-                <span style={{ background: isTempHigh ? '#ffe4e6' : '#dcfce7', color: isTempHigh ? '#be123c' : '#166534', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>
-                  {isTempHigh ? 'High (>99°F)' : '+3%'}
-                </span>
+                {isTempHigh && (
+                  <span style={{ background: '#ffe4e6', color: '#be123c', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>High</span>
+                )}
               </div>
             </div>
 
             {/* Heart Rate Card */}
             <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                Heart Rate
-              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Heart Rate</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '12px' }}>
-                <span style={{ fontSize: '24px', fontWeight: 800, color: isHrAbnormal ? '#dc2626' : '#0f172a' }}>{hr} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>bpm</span></span>
-                <span style={{ background: isHrAbnormal ? '#ffe4e6' : '#dcfce7', color: isHrAbnormal ? '#be123c' : '#166534', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>
-                  {isHrAbnormal ? 'High (>100)' : '+2.4%'}
+                <span style={{ fontSize: '24px', fontWeight: 800, color: isHrAbnormal ? '#dc2626' : '#0f172a' }}>
+                  {hr !== null ? `${hr} bpm` : '—'}
                 </span>
+                {isHrAbnormal && (
+                  <span style={{ background: '#ffe4e6', color: '#be123c', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>Abnormal</span>
+                )}
               </div>
             </div>
 
             {/* Oxygen Saturation Card */}
             <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                Oxygen Saturation
-              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Oxygen Saturation</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '12px' }}>
-                <span style={{ fontSize: '24px', fontWeight: 800, color: isSpo2Low ? '#dc2626' : '#0f172a' }}>{spo2}%</span>
-                <span style={{ background: isSpo2Low ? '#ffe4e6' : '#dcfce7', color: isSpo2Low ? '#be123c' : '#166534', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>
-                  {isSpo2Low ? 'Low (<95%)' : '+1.9%'}
+                <span style={{ fontSize: '24px', fontWeight: 800, color: isSpo2Low ? '#dc2626' : '#0f172a' }}>
+                  {spo2 !== null ? `${spo2}%` : '—'}
                 </span>
+                {isSpo2Low && (
+                  <span style={{ background: '#ffe4e6', color: '#be123c', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>Low</span>
+                )}
               </div>
             </div>
 
           </div>
 
-          {/* HEALTH METRICS TIMELINE GRAPH CARD */}
+          {/* HEALTH METRICS TIMELINE CHART */}
           <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '24px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Activity size={20} color="#3b82f6" />
-                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0, color: '#0f172a' }}>Health Metrics Timeline</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 4px 0', color: '#0f172a' }}>Health Metrics Timeline</h3>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Vitals and physiological trends over time</p>
               </div>
 
-              {/* Metric Select Buttons */}
-              <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '3px', borderRadius: '20px' }}>
+              <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
                 {[
                   { id: 'hr', label: 'Heart Rate' },
                   { id: 'bp', label: 'Blood Pressure' },
-                  { id: 'glucose', label: 'Glucose Levels' },
-                  { id: 'spo2', label: 'Oxygen Saturation' }
+                  { id: 'glucose', label: 'Glucose' },
+                  { id: 'spo2', label: 'Oxygen' }
                 ].map(m => (
                   <button
                     key={m.id}
                     onClick={() => setMetricTab(m.id as any)}
                     style={{
                       padding: '4px 12px',
-                      borderRadius: '16px',
+                      borderRadius: '8px',
                       fontSize: '11px',
-                      fontWeight: 700,
+                      fontWeight: 600,
                       border: 'none',
                       cursor: 'pointer',
-                      background: metricTab === m.id ? '#3b82f6' : 'transparent',
-                      color: metricTab === m.id ? '#ffffff' : '#64748b'
+                      background: metricTab === m.id ? '#ffffff' : 'transparent',
+                      color: metricTab === m.id ? '#0f172a' : '#64748b',
+                      boxShadow: metricTab === m.id ? '0 1px 3px rgba(0,0,0,0.05)' : 'none'
                     }}
                   >
                     {m.label}
@@ -611,84 +668,28 @@ export const PatientProfile: React.FC = () => {
               </div>
             </div>
 
-            {/* Metric Title & Dynamic Legend */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '10px' }}>
-              {metricTab === 'bp' && (
-                <div style={{ display: 'flex', gap: '14px', fontSize: '12px', fontWeight: 700 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#3b82f6' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }}></span>
-                    Systolic (mmHg)
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
-                    Diastolic (mmHg)
-                  </span>
-                </div>
-              )}
-              {metricTab === 'hr' && (
-                <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700 }}>
-                  ❤️ Heart Rate (bpm) — Normal: 60-100 bpm
-                </span>
-              )}
-              {metricTab === 'glucose' && (
-                <span style={{ fontSize: '12px', color: '#8b5cf6', fontWeight: 700 }}>
-                  🩸 Glucose Levels (mg/dL)
-                </span>
-              )}
-              {metricTab === 'spo2' && (
-                <span style={{ fontSize: '12px', color: '#06b6d4', fontWeight: 700 }}>
-                  🫁 Oxygen Saturation (%) — Target: ≥95%
-                </span>
-              )}
-            </div>
+            <div style={{ height: '180px', width: '100%', position: 'relative' }}>
+              <svg width="100%" height="100%" viewBox="0 0 700 140" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+                <line x1="40" y1="20" x2="660" y2="20" stroke="#f1f5f9" strokeDasharray="4 4" />
+                <line x1="40" y1="60" x2="660" y2="60" stroke="#f1f5f9" strokeDasharray="4 4" />
+                <line x1="40" y1="100" x2="660" y2="100" stroke="#f1f5f9" strokeDasharray="4 4" />
 
-            {/* Dynamic Smooth SVG Trend Line Chart */}
-            <div style={{ width: '100%', height: '140px' }}>
-              <svg width="100%" height="100%" viewBox="0 0 700 140" preserveAspectRatio="none">
-                {/* Horizontal Gridlines */}
-                <line x1="0" y1="25" x2="700" y2="25" stroke="#f1f5f9" strokeDasharray="4 4" />
-                <line x1="0" y1="65" x2="700" y2="65" stroke="#f1f5f9" strokeDasharray="4 4" />
-                <line x1="0" y1="105" x2="700" y2="105" stroke="#f1f5f9" strokeDasharray="4 4" />
-
-                {/* Primary Curve Line */}
-                <path
-                  d={chartSvgData.primaryPath}
-                  fill="none"
-                  stroke={chartSvgData.lineColor}
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-
-                {/* Secondary Curve Line (Diastolic BP) */}
-                {metricTab === 'bp' && (
-                  <path
-                    d={chartSvgData.secondaryPath}
-                    fill="none"
-                    stroke="#10b981"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                  />
+                {chartSvgData.primaryPath && (
+                  <path d={chartSvgData.primaryPath} fill="none" stroke={chartSvgData.lineColor} strokeWidth="3" strokeLinecap="round" />
                 )}
 
-                {/* Primary Data Points & Labels */}
-                {chartSvgData.primaryPoints.map((pt: any, i: number) => (
-                  <g key={`p-${i}`}>
-                    <circle cx={pt.x} cy={pt.y} r="5" fill={chartSvgData.lineColor} stroke="#ffffff" strokeWidth="2" />
-                    <text x={pt.x} y={pt.y - 8} fontSize="11" fontWeight="800" fill={chartSvgData.lineColor} textAnchor="middle">
-                      {pt.val}
-                    </text>
-                    <text x={pt.x} y="132" fontSize="11" fontWeight="700" fill="#64748b" textAnchor="middle">
-                      {pt.dateStr}
-                    </text>
-                  </g>
-                ))}
+                {chartSvgData.secondaryPath && (
+                  <path d={chartSvgData.secondaryPath} fill="none" stroke="#60a5fa" strokeWidth="2" strokeDasharray="4 4" />
+                )}
 
-                {/* Secondary Data Points (Diastolic BP) */}
-                {metricTab === 'bp' && chartSvgData.secondaryPoints.map((pt: any, i: number) => (
-                  <g key={`s-${i}`}>
-                    <circle cx={pt.x} cy={pt.y} r="4" fill="#10b981" stroke="#ffffff" strokeWidth="2" />
-                    <text x={pt.x} y={pt.y + 14} fontSize="10" fontWeight="700" fill="#10b981" textAnchor="middle">
+                {chartSvgData.primaryPoints.map((pt: any, idx: number) => (
+                  <g key={idx}>
+                    <circle cx={pt.x} cy={pt.y} r="5" fill="#ffffff" stroke={chartSvgData.lineColor} strokeWidth="3" />
+                    <text x={pt.x} y={pt.y - 10} textAnchor="middle" fontSize="10" fontWeight="700" fill="#1e293b">
                       {pt.val}
+                    </text>
+                    <text x={pt.x} y="130" textAnchor="middle" fontSize="10" fontWeight="600" fill="#94a3b8">
+                      {pt.dateStr}
                     </text>
                   </g>
                 ))}
@@ -696,316 +697,276 @@ export const PatientProfile: React.FC = () => {
             </div>
           </div>
 
-          {/* BOTTOM ROW (2 CARDS: LABS & RISK FORECAST) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            
-            {/* Labs Card (Parameter Progress Bars & AI Banner) */}
-            <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '24px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <h3 style={{ fontSize: '15px', fontWeight: 800, margin: '0 0 16px 0', color: '#0f172a' }}>Labs</h3>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  {[
-                    { name: 'Mg', val: '6.0 / 6.0', pct: '100%' },
-                    { name: 'K', val: '9.0 / 10.0', pct: '90%' },
-                    { name: 'Cu', val: '3.0 / 2.5', pct: '85%' },
-                    { name: 'Ca', val: '34.0 / 40.0', pct: '85%' }
-                  ].map((item, idx) => (
-                    <div key={idx}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 700, marginBottom: '6px', color: '#334155' }}>
-                        <span>{item.name}</span>
-                        <span>{item.val}</span>
-                      </div>
-                      <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ width: item.pct, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #06b6d4)', borderRadius: '4px' }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* AI Assistant Report Light Blue Banner */}
-              <div style={{ marginTop: '20px', background: '#f0f9ff', border: '1px solid #e0f2fe', padding: '14px', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: 800, color: '#0284c7', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Sparkles size={14} /> AI Assistant Report
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#0369a1', marginTop: '2px' }}>
-                    The assistant has identified <strong>four issues</strong> that necessitate medical attention.
-                  </div>
-                </div>
-                <ChevronRight size={18} color="#0284c7" />
-              </div>
-            </div>
-
-            {/* Risk Forecast Card (Gauges) */}
-            <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '24px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                <AlertCircle size={18} color="#3b82f6" />
-                <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0, color: '#0f172a' }}>Risk Forecast</h3>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {[
-                  { title: 'Cardiovascular Risk', level: 'Moderate', factors: 'Cholesterol: 160 mg/dL', pct: 23, color: '#f59e0b' },
-                  { title: 'Stroke Risk', level: 'Low', factors: 'No atrial fibrillation', pct: 6, color: '#10b981' },
-                  { title: 'Type 2 Diabetes Risk', level: 'High', factors: 'HbA1c: 5.4%', pct: 64, color: '#ef4444' }
-                ].map((risk, idx) => (
-                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: idx < 2 ? '1px solid #f1f5f9' : 'none', paddingBottom: idx < 2 ? '12px' : '0' }}>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>{risk.title}</div>
-                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                        Level: <strong style={{ color: risk.color }}>{risk.level}</strong> &nbsp;•&nbsp; {risk.factors}
-                      </div>
-                    </div>
-
-                    {/* Radial SVG Gauge Chart */}
-                    <div style={{ position: 'relative', width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <svg width="44" height="44" viewBox="0 0 44 44">
-                        <circle cx="22" cy="22" r="18" fill="none" stroke="#f1f5f9" strokeWidth="4" />
-                        <circle 
-                          cx="22" cy="22" r="18" fill="none" stroke={risk.color} strokeWidth="4" 
-                          strokeDasharray={`${(risk.pct / 100) * 113} 113`} 
-                          strokeLinecap="round"
-                          transform="rotate(-90 22 22)"
-                        />
-                      </svg>
-                      <span style={{ position: 'absolute', fontSize: '10px', fontWeight: 800, color: '#0f172a' }}>{risk.pct}%</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </div>
-
         </div>
 
       </div>
       )}
 
-      {/* ------------------------------------------------------------------------- */}
-      {/* HISTORY TAB: CHRONOLOGICAL OP CONSULTATION VISIT TIMELINE CARDS */}
-      {/* ------------------------------------------------------------------------- */}
+      {/* HISTORY TAB: CHRONOLOGICAL TIMELINE OF LAB ORDERS, TESTS & CONSULTATIONS */}
       {activeTab === 'history' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', marginTop: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              📜 OP Consultation History & Timeline
+              📜 Chronological OPD & Laboratory History Timeline
             </h2>
             <span style={{ fontSize: '12px', background: '#e2e8f0', color: '#334155', fontWeight: 700, padding: '4px 12px', borderRadius: '16px' }}>
-              {vHist.length || encounters.length || 2} Total Visits
+              {timelineEvents.length} Total Events
             </span>
           </div>
 
-          {(vHist.length > 0 ? vHist : (encounters.length > 0 ? encounters : [
-            {
-              recordedAt: '2026-07-26T10:30:00Z',
-              opBookingId: 'BILL-LAB-1024',
-              weight: 164,
-              temperature: 98.6,
-              bloodPressure: { systolic: 118, diastolic: 78 },
-              heartRate: 78,
-              oxygenSaturation: 98,
-              glucoseLevel: 95,
-              glucoseType: 'Fasting',
-              notes: 'Follow-up review.',
-              doctorNotes: 'Patient showing significant recovery. Continue prescribed medication.',
-              tests: ['Complete Blood Count (CBC)', 'Fasting Blood Sugar (FBS)']
-            },
-            {
-              recordedAt: '2026-07-24T03:32:00Z',
-              opBookingId: 'BILL-LAB-6C3913A0',
-              weight: 165,
-              temperature: 99.4,
-              bloodPressure: { systolic: 120, diastolic: 80 },
-              heartRate: 140,
-              oxygenSaturation: 94,
-              glucoseLevel: 110,
-              glucoseType: 'Random',
-              notes: 'Patient mentions mild fatigue after morning activity.',
-              doctorNotes: 'Advised rest and mild electrolyte intake.',
-              tests: ['Serum Electrolytes (Na, K, Cl)']
-            }
-          ])).slice().reverse().map((visit: any, idx: number) => {
-            const visitDateFormatted = visit.recordedAt || visit.visitDate || visit.encounter_timestamp
-              ? new Date(visit.recordedAt || visit.visitDate || visit.encounter_timestamp).toLocaleDateString('en-GB')
-              : '24/07/2026';
-            const opId = visit.opBookingId || visit.op_no || visit.bill_no || `BILL-LAB-${idx + 1024}`;
-            const docName = patient.doctor_first_name 
-              ? `Dr. ${patient.doctor_first_name} ${patient.doctor_last_name}` 
-              : 'Dr. Sandeep Gunde';
+          {timelineEvents.length > 0 ? (
+            timelineEvents.map((evt: any, idx: number) => {
+              const eventDate = new Date(evt.timestamp).toLocaleDateString('en-GB', {
+                day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+              });
 
-            const bpStr = visit.bloodPressure 
-              ? `${visit.bloodPressure.systolic}/${visit.bloodPressure.diastolic} mmHg`
-              : (visit.systolicBp ? `${visit.systolicBp}/${visit.diastolicBp} mmHg` : (visit.systolic_bp ? `${visit.systolic_bp}/${visit.diastolic_bp} mmHg` : '120/80 mmHg'));
+              // LAB ORDER TIMELINE ITEM
+              if (evt.type === 'lab_order') {
+                return (
+                  <div key={idx} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+                    <div style={{ background: '#f0f9ff', borderBottom: '1px solid #bae6fd', margin: '-20px -20px 16px -20px', padding: '14px 20px', borderRadius: '16px 16px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div style={{ fontWeight: 800, fontSize: '14px', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        🧪 Diagnostic Test Order #{evt.order_number}
+                        <span style={{ fontSize: '11px', background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
+                          {evt.status}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#0284c7', fontWeight: 600 }}>
+                        📅 Date: {eventDate} | Doctor: Dr. {evt.doctor_name}
+                      </div>
+                    </div>
 
-            return (
-              <div key={idx} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-                {/* Card Header */}
-                <div style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', margin: '-20px -20px 16px -20px', padding: '14px 20px', borderRadius: '16px 16px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                  <div style={{ fontWeight: 800, fontSize: '14px', color: '#1e293b' }}>
-                    📅 Visit Date: {visitDateFormatted} - OP ID: {opId} | Doctor: {docName}
-                  </div>
-                </div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                      Diagnostic Test Items & Results:
+                    </div>
 
-                {/* Vitals Recorded */}
-                <div style={{ marginBottom: '14px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                    Vitals Recorded:
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#475569', lineHeight: 1.6 }}>
-                    • <strong>Weight:</strong> {visit.weight || visit.weight_kg || 165} lbs | <strong>Temp:</strong> {visit.temperature || visit.temperature_celsius || 99.4}°F | <strong>BP:</strong> {bpStr} | <strong>HR:</strong> {visit.heartRate || visit.pulse_rate || 140} bpm | <strong>SpO2:</strong> {visit.oxygenSaturation || visit.spo2 || 94}%
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#475569', lineHeight: 1.6, marginTop: '2px' }}>
-                    • <strong>Glucose:</strong> {visit.glucoseLevel || 110} mg/dL ({visit.glucoseType || 'Random'}) | <strong>Chief Complaint:</strong> {visit.notes || visit.chiefComplaints || visit.chief_complaint || 'Patient mentions mild fatigue.'}
-                  </div>
-                </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {(evt.items || []).map((item: any, iIdx: number) => (
+                        <div key={iIdx} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', background: '#fafafa' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ fontWeight: 800, fontSize: '13px', color: '#0f172a' }}>
+                              {item.test_name || item.name || 'Laboratory Test'}
+                              <span style={{ marginLeft: '8px', fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                                ({item.category_name || 'General Diagnostics'})
+                              </span>
+                            </div>
 
-                {/* Prescribed Tests & Diagnostics (Inline Laboratory Investigation Report Table) */}
-                <div style={{ marginBottom: '14px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
-                    Prescribed Tests & Diagnostics:
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {(visit.tests || ['Serum Electrolytes (Na, K, Cl)']).map((testName: string, tIdx: number) => {
-                      const isCbc = testName.toUpperCase().includes('CBC') || testName.toUpperCase().includes('BLOOD COUNT');
-                      const isFbs = testName.toUpperCase().includes('FBS') || testName.toUpperCase().includes('SUGAR') || testName.toUpperCase().includes('GLUCOSE');
-                      
-                      const rows = isCbc ? [
-                        { param: 'Hemoglobin (Hb)', result: '13.8', ref: '12.0 - 15.5', unit: 'g/dL' },
-                        { param: 'Total Leucocyte Count (WBC)', result: '7,400', ref: '4,000 - 11,000', unit: '/cumm' },
-                        { param: 'Platelet Count', result: '2,65,000', ref: '1,50,000 - 4,50,000', unit: '/cumm' },
-                        { param: 'RBC Count', result: '4.6', ref: '3.8 - 5.2', unit: 'mill/cumm' }
-                      ] : isFbs ? [
-                        { param: 'Fasting Blood Sugar (FBS)', result: '95', ref: '70 - 100', unit: 'mg/dL' },
-                        { param: 'HbA1c (Glycated Hb)', result: '5.4', ref: '4.0 - 5.6', unit: '%' }
-                      ] : [
-                        { param: `${testName} Parameter 1`, result: 'Normal', ref: 'Within Range', unit: 'Standard' },
-                        { param: `${testName} Parameter 2`, result: 'Negative', ref: 'Negative', unit: 'Qualitative' }
-                      ];
-
-                      return (
-                        <div key={tIdx} style={{ marginTop: '4px', marginBottom: '8px' }}>
-                          <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.2px' }}>
-                            LABORATORY INVESTIGATION REPORT: {testName}
+                            <button 
+                              onClick={() => window.open(`/public/reports/${item.item_id}`, '_blank')}
+                              style={{ background: '#2563eb', color: '#ffffff', border: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            >
+                              <FileText size={14} /> View Report PDF
+                            </button>
                           </div>
 
-                          <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: '#ffffff' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                              <thead>
-                                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                                  <th style={{ padding: '10px 14px', textAlign: 'left', color: '#1d4ed8', fontWeight: 700, width: '40%' }}>TEST PARAMETER</th>
-                                  <th style={{ padding: '10px 14px', textAlign: 'left', color: '#1d4ed8', fontWeight: 700, width: '25%' }}>RESULT OBSERVED</th>
-                                  <th style={{ padding: '10px 14px', textAlign: 'left', color: '#1d4ed8', fontWeight: 700, width: '20%' }}>REFERENCE INTERVAL</th>
-                                  <th style={{ padding: '10px 14px', textAlign: 'left', color: '#1d4ed8', fontWeight: 700, width: '15%' }}>UNIT</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {rows.map((row, rIdx) => (
-                                  <tr key={rIdx} style={{ borderBottom: rIdx < rows.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                    <td style={{ padding: '10px 14px', color: '#475569', fontWeight: 500 }}>{row.param}</td>
-                                    <td style={{ padding: '10px 14px', color: '#0f172a', fontWeight: 600 }}>{row.result}</td>
-                                    <td style={{ padding: '10px 14px', color: '#64748b' }}>{row.ref}</td>
-                                    <td style={{ padding: '10px 14px', color: '#64748b' }}>{row.unit}</td>
+                          {/* Parameter Table if available */}
+                          {item.results && item.results.length > 0 ? (
+                            <div style={{ border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden', background: '#ffffff', marginTop: '8px' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                <thead>
+                                  <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
+                                    <th style={{ padding: '8px 12px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>PARAM</th>
+                                    <th style={{ padding: '8px 12px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>OBSERVED VALUE</th>
+                                    <th style={{ padding: '8px 12px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>REF RANGE</th>
+                                    <th style={{ padding: '8px 12px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>UNIT</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          <div style={{ marginTop: '8px', background: '#f0f9ff', border: '1px solid #e0f2fe', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', color: '#0369a1' }}>
-                            <strong>Pathologist Impression:</strong> <em>Test results are within normal physiological reference ranges for age and gender.</em>
-                          </div>
+                                </thead>
+                                <tbody>
+                                  {item.results.map((res: any, rIdx: number) => (
+                                    <tr key={rIdx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                      <td style={{ padding: '8px 12px', fontWeight: 600, color: '#334155' }}>{res.name || res.parameter_name}</td>
+                                      <td style={{ padding: '8px 12px', fontWeight: 700, color: '#0f172a' }}>{res.result_value || res.actual_value}</td>
+                                      <td style={{ padding: '8px 12px', color: '#64748b' }}>{res.normal_range || res.reference_interval || 'Standard'}</td>
+                                      <td style={{ padding: '8px 12px', color: '#64748b' }}>{res.unit || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', marginTop: '4px' }}>
+                              Barcode: {item.barcode || '—'} | Status: {item.status || 'Registered'}
+                            </div>
+                          )}
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
-                </div>
+                );
+              }
 
-                {/* Doctor Clinical Notes */}
-                <div style={{ paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                    Doctor Clinical Notes:
+              // VITALS TIMELINE ITEM
+              if (evt.type === 'vital') {
+                return (
+                  <div key={idx} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+                    <div style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', margin: '-20px -20px 16px -20px', padding: '14px 20px', borderRadius: '16px 16px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontWeight: 800, fontSize: '14px', color: '#1e293b' }}>
+                        🩺 OP Triage & Vitals Recording - Date: {eventDate} | Ref: {evt.opBookingId}
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: '13px', color: '#475569', lineHeight: 1.6 }}>
+                      • <strong>Weight:</strong> {evt.weight || '—'} lbs | <strong>Temp:</strong> {evt.temperature || '—'}°F | <strong>BP:</strong> {evt.bloodPressure ? `${evt.bloodPressure.systolic}/${evt.bloodPressure.diastolic}` : '—'} mmHg | <strong>HR:</strong> {evt.heartRate || '—'} bpm | <strong>SpO2:</strong> {evt.oxygenSaturation || '—'}%
+                    </div>
+                    {evt.notes && (
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
+                        • <strong>Chief Complaint / Notes:</strong> {evt.notes}
+                      </div>
+                    )}
+                    {evt.doctorNotes && (
+                      <div style={{ fontSize: '12px', fontStyle: 'italic', color: '#475569', background: '#f1f5f9', padding: '8px 12px', borderRadius: '8px', marginTop: '8px' }}>
+                        Doctor Notes: "{evt.doctorNotes}"
+                      </div>
+                    )}
                   </div>
-                  <div style={{ fontSize: '13px', fontStyle: 'italic', color: '#64748b', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px' }}>
-                    "{visit.doctorNotes || 'Patient showing significant recovery. Continue prescribed medication.'}"
+                );
+              }
+
+              // ENCOUNTER CONSULTATION ITEM
+              return (
+                <div key={idx} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
+                  <div style={{ background: '#faf5ff', borderBottom: '1px solid #e9d5ff', margin: '-20px -20px 16px -20px', padding: '14px 20px', borderRadius: '16px 16px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontWeight: 800, fontSize: '14px', color: '#7e22ce' }}>
+                      👨‍⚕️ Doctor Consultation - Date: {eventDate} | Physician: {evt.provider_name}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#334155' }}>
+                    <strong>Chief Complaint:</strong> {evt.chief_complaint || 'General Checkup'}
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          ) : (
+            <div style={{ background: '#ffffff', borderRadius: '16px', padding: '30px', textAlign: 'center', color: '#64748b' }}>
+              No history timeline events found for this patient.
+            </div>
+          )}
         </div>
       )}
 
-      {/* ------------------------------------------------------------------------- */}
       {/* APPOINTMENTS TAB */}
-      {/* ------------------------------------------------------------------------- */}
       {activeTab === 'appointments' && (
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginTop: '10px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 16px 0', color: '#0f172a' }}>📅 Patient Appointments</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 16px 0', color: '#0f172a' }}>📅 Patient Appointments Directory</h3>
           {(data?.upcomingAppointments && data.upcomingAppointments.length > 0) ? (
             data.upcomingAppointments.map((appt: any, idx: number) => (
-              <div key={idx} style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div key={idx} style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <strong>{formatDateTime(appt.appointment_date)}</strong> - Dr. {appt.doctor_name || 'Sandeep Gunde'}
+                  <strong style={{ fontSize: '14px', color: '#0f172a' }}>{new Date(appt.created_at || appt.appointment_date || Date.now()).toLocaleDateString('en-GB')}</strong> - Dr. {appt.doctor_name || 'Sandeep Gunde'}
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>{appt.notes || 'General OPD Visit'}</div>
                 </div>
-                <span style={{ background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
+                <span style={{ background: '#dcfce7', color: '#166534', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 700 }}>
                   {appt.status || 'Confirmed'}
                 </span>
               </div>
             ))
           ) : (
-            <div style={{ color: '#64748b', fontSize: '13px' }}>1 Confirmed Appointment scheduled for July 25, 2026 with Dr. Sandeep Gunde.</div>
+            <div style={{ color: '#64748b', fontSize: '13px', padding: '16px 0' }}>No appointment records found for this patient.</div>
           )}
         </div>
       )}
 
-      {/* ------------------------------------------------------------------------- */}
       {/* MEDICAL REPORTS TAB */}
-      {/* ------------------------------------------------------------------------- */}
       {activeTab === 'reports' && (
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginTop: '10px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 16px 0', color: '#0f172a' }}>📑 Medical Reports</h3>
-          {labOrders.length > 0 ? (
-            labOrders.map((order: any, idx: number) => (
-              <div key={idx} style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <strong>Order #{order.order_id?.substring(0, 8) || idx + 101}</strong> - {order.doctor_name || 'Dr. Sandeep Gunde'}
+          <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 16px 0', color: '#0f172a' }}>📑 Verified Medical Reports & PDFs</h3>
+          {allTestItems.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {allTestItems.map((item: any, idx: number) => (
+                <div key={idx} style={{ padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '14px', color: '#0f172a' }}>{item.test_name || item.name}</div>
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                      Order #{item.order_number} | Category: {item.category_name || 'General'} | Doctor: Dr. {item.doctor_name}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => window.open(`/public/reports/${item.item_id}`, '_blank')}
+                    style={{ background: '#2563eb', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <FileText size={14} /> View Report PDF
+                  </button>
                 </div>
-                <span style={{ color: '#2563eb', fontWeight: 700, cursor: 'pointer' }}>[ View Report PDF ]</span>
-              </div>
-            ))
+              ))}
+            </div>
           ) : (
-            <div style={{ color: '#64748b', fontSize: '13px' }}>• Complete Blood Count (CBC) - <span style={{ color: '#2563eb', fontWeight: 700, cursor: 'pointer' }}>[ View Report PDF ]</span></div>
+            <div style={{ color: '#64748b', fontSize: '13px', padding: '16px 0' }}>No medical report PDFs available for this patient.</div>
           )}
         </div>
       )}
 
-      {/* ------------------------------------------------------------------------- */}
       {/* MEDICAL TESTS TAB */}
-      {/* ------------------------------------------------------------------------- */}
       {activeTab === 'tests' && (
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginTop: '10px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 16px 0', color: '#0f172a' }}>🧪 Diagnostic & Laboratory Tests</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#334155' }}>
-            <div>• Complete Blood Count (CBC) - Completed</div>
-            <div>• Fasting Blood Sugar (FBS) - Completed</div>
-            <div>• Lipid Profile Panel - Completed</div>
-          </div>
+          <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 16px 0', color: '#0f172a' }}>🧪 Diagnostic & Laboratory Tests Directory</h3>
+          {allTestItems.length > 0 ? (
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>TEST NAME</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>CATEGORY</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>SAMPLE</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>STATUS</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', color: '#1e293b', fontWeight: 700 }}>ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allTestItems.map((item: any, idx: number) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#0f172a' }}>{item.test_name || item.name}</td>
+                      <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.category_name || 'General'}</td>
+                      <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.sample_required || 'Blood'}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
+                          {item.status || 'Completed'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        <button 
+                          onClick={() => window.open(`/public/reports/${item.item_id}`, '_blank')}
+                          style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          View Report
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ color: '#64748b', fontSize: '13px', padding: '16px 0' }}>No diagnostic test orders recorded for this patient.</div>
+          )}
         </div>
       )}
 
-      {/* ------------------------------------------------------------------------- */}
       {/* IMAGING TAB */}
-      {/* ------------------------------------------------------------------------- */}
       {activeTab === 'imaging' && (
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginTop: '10px' }}>
           <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 16px 0', color: '#0f172a' }}>🩻 Radiology & Imaging Studies</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: '#334155' }}>
-            <div>• Chest X-Ray (PA View) - <span style={{ color: '#2563eb', fontWeight: 700, cursor: 'pointer' }}>[ View DICOM / PDF ]</span></div>
-            <div>• Lumbar Spine MRI - <span style={{ color: '#2563eb', fontWeight: 700, cursor: 'pointer' }}>[ View DICOM / PDF ]</span></div>
-          </div>
+          {imagingItems.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {imagingItems.map((item: any, idx: number) => (
+                <div key={idx} style={{ padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#faf5ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '14px', color: '#6b21a8' }}>{item.test_name || item.name}</div>
+                    <div style={{ fontSize: '12px', color: '#7e22ce', marginTop: '2px' }}>
+                      Category: {item.category_name || 'Radiology'} | Doctor: Dr. {item.doctor_name}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => window.open(`/public/reports/${item.item_id}`, '_blank')}
+                    style={{ background: '#7e22ce', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    View Imaging Scan / Report
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: '#64748b', fontSize: '13px', padding: '16px 0' }}>No radiology or imaging scan records found for this patient.</div>
+          )}
         </div>
       )}
 
