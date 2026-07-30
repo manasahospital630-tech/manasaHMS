@@ -469,7 +469,7 @@ const InvoiceGenerator: React.FC = () => {
       .join(', ');
   };
 
-  const handlePrintBill = async (invoiceId: string, selectedDoctorName?: string) => {
+  const handlePrintBill = async (invoiceId: string) => {
     try {
       const [invRes, pkgsRes] = await Promise.all([
         api.get(`/billing/invoices/${invoiceId}`),
@@ -755,11 +755,7 @@ const InvoiceGenerator: React.FC = () => {
                     <tr>
                       <td style="padding: 4px 0; color: #475569; font-weight: 600;">Consultant</td>
                       <td style="padding: 4px 0; font-weight: 700;">: ${(() => {
-                        const rawDoc = selectedDoctorName 
-                          || (inv.doctor_name && inv.doctor_name !== 'Hospital Doctor' && inv.doctor_name !== 'Dr. System Admin' ? inv.doctor_name : null)
-                          || (effectiveConsultantDoctor && effectiveConsultantDoctor !== 'Hospital Doctor' ? effectiveConsultantDoctor : null)
-                          || inv.doctor_name
-                          || 'Dr. System Admin';
+                        const rawDoc = (inv.doctor_name && inv.doctor_name !== 'Hospital Doctor') ? inv.doctor_name : (effectiveConsultantDoctor && effectiveConsultantDoctor !== 'Hospital Doctor' ? effectiveConsultantDoctor : 'Dr. System Admin');
                         return rawDoc.startsWith('Dr.') ? rawDoc : `Dr. ${rawDoc}`;
                       })()}</td>
                       <td style="padding: 4px 0; color: #475569; font-weight: 600;">Referred By</td>
@@ -930,8 +926,7 @@ const InvoiceGenerator: React.FC = () => {
         insuranceCoverage: Number(insurance),
         paymentMethod,
         paidAmount: clampedPaidAmount,
-        paymentStatus: calculatedPaymentStatus,
-        doctorName: effectiveConsultantDoctor
+        paymentStatus: calculatedPaymentStatus
       });
       
       if (res.data.success) {
@@ -942,8 +937,8 @@ const InvoiceGenerator: React.FC = () => {
         setAdvancePaid('');
         setTimeout(() => setSuccess(''), 3000);
         
-        // Print the invoice directly with selected consultant doctor
-        handlePrintBill(createdInv.invoice_id, effectiveConsultantDoctor);
+        // Print the invoice directly
+        handlePrintBill(createdInv.invoice_id);
       }
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to generate invoice');
