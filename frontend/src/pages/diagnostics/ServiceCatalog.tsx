@@ -211,16 +211,6 @@ export const ServiceCatalog: React.FC = () => {
     }
   }, [activeTab]);
 
-  useEffect(() => {
-    const handleFocus = () => {
-      if (activeTab === 'reports') {
-        loadOrders();
-      }
-    };
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [activeTab]);
-
   const openAddPackageModal = () => {
     setEditingPackageId(null);
     setPackageForm({
@@ -1866,11 +1856,8 @@ export const ServiceCatalog: React.FC = () => {
                 </select>
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span>Completed Reports: <strong>{getCompletedReports().length}</strong></span>
-              <Button variant="secondary" size="sm" onClick={loadOrders} icon={<RefreshCw size={12} className={ordersLoading ? 'spin' : ''} />}>
-                Refresh
-              </Button>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              Completed Reports: <strong>{getCompletedReports().length}</strong>
             </div>
           </div>
 

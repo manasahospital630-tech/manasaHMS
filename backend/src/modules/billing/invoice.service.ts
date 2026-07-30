@@ -319,26 +319,12 @@ export const recordPayment = async (id: string, input: RecordPaymentInput) => {
     [newAmountPaid, newDueAmount, newStatus, input.paymentMethod, id]
   );
 
-  // Sync billing_invoices table as well
-  try {
-    await query(
-      `UPDATE billing_invoices SET paid_amount = $1, balance_amount = $2, status = $3, payment_mode = $4 WHERE invoice_id = $5`,
-      [newAmountPaid, newDueAmount, newStatus, input.paymentMethod, id]
-    );
-  } catch (e) {
-    console.error('Failed to sync billing_invoices on payment:', e);
-  }
-
-  // Sync diagnostic test order payment status
+  // Sync diagnostic test order payment status if matching
   const orderNum = `BILL-LAB-${id.substring(0, 8).toUpperCase()}`;
   try {
-    await query(
-      `UPDATE test_orders SET payment_status = $1 
-       WHERE order_id = $2 OR order_number = $3 OR order_number LIKE CONCAT('%', $4, '%')`,
-      [newStatus, id, orderNum, id.substring(0, 8)]
-    );
+    await query(`UPDATE test_orders SET payment_status = $1 WHERE order_number = $2`, [newStatus, orderNum]);
   } catch (e) {
-    console.error('Failed to sync test_orders on payment:', e);
+    // Ignore
   }
 
   // Insert payment history audit log
