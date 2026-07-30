@@ -42,23 +42,42 @@ export const getManasaEmblemSvgString = (sizePx = 70): string => {
   `;
 };
 
+export const getResolvedLogoUrl = (logoUrlInput?: string | null): string | null => {
+  if (!logoUrlInput || typeof logoUrlInput !== 'string') return null;
+  const trimmed = logoUrlInput.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('data:image')) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+
+  const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  const origin = (typeof window !== 'undefined' && window.location.origin.includes('localhost'))
+    ? 'http://localhost:5000'
+    : (typeof window !== 'undefined' ? window.location.origin : '');
+
+  return `${origin}${cleanPath}`;
+};
+
 export const getHospitalLogoHtml = (logoUrlInput?: string | null, heightPx = 70): string => {
   const fallbackSvg = getManasaEmblemSvgString(heightPx);
-  if (logoUrlInput && typeof logoUrlInput === 'string') {
-    const trimmed = logoUrlInput.trim();
-    if (trimmed.startsWith('data:image') || (trimmed.startsWith('http') && !trimmed.includes('localhost'))) {
-      const cleanFallback = fallbackSvg.replace(/"/g, '&quot;').replace(/\n/g, '');
-      return `
-        <div style="display: flex; align-items: center; justify-content: flex-start;">
-          <img 
-            src="${trimmed}" 
-            alt="Logo" 
-            style="height: ${heightPx}px; max-width: 140px; object-fit: contain;" 
-            onerror="this.onerror=null; this.outerHTML='${cleanFallback}';"
-          />
-        </div>
-      `;
-    }
+  const resolvedUrl = getResolvedLogoUrl(logoUrlInput);
+
+  if (resolvedUrl) {
+    const cleanFallback = fallbackSvg.replace(/"/g, '&quot;').replace(/\n/g, '');
+    return `
+      <div style="display: flex; align-items: center; justify-content: flex-start;">
+        <img 
+          src="${resolvedUrl}" 
+          alt="Logo" 
+          style="height: ${heightPx}px; max-width: 160px; object-fit: contain;" 
+          onerror="this.onerror=null; this.outerHTML='${cleanFallback}';"
+        />
+      </div>
+    `;
   }
   return fallbackSvg;
 };

@@ -13,6 +13,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import api from '../../api/client';
 import { formatDateTime } from '../../utils/formatters';
+import { getResolvedLogoUrl } from '../../utils/logoHelper';
 import RoleMatrixManagement from './RoleMatrixManagement';
 
 const CATEGORY_OPTIONS = [
@@ -485,9 +486,12 @@ const SystemSettings: React.FC = () => {
                       />
                       {hospitalLogo && (
                         <img
-                          src={hospitalLogo}
+                          src={getResolvedLogoUrl(hospitalLogo) || hospitalLogo}
                           alt="Logo Preview"
-                          style={{ height: 40, width: 40, objectFit: 'contain', border: '1px solid var(--border-primary)', borderRadius: 4, background: '#fff' }}
+                          style={{ height: 44, maxWidth: 120, objectFit: 'contain', border: '1px solid var(--border-primary)', borderRadius: 6, background: '#fff', padding: '2px 4px' }}
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
                         />
                       )}
                     </div>

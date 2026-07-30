@@ -4,7 +4,7 @@ import { Beaker, ShieldAlert, Printer, RefreshCw, AlertTriangle, FileText, Check
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import api from '../../api/client';
-import { ManasaLogoSvg, getQrSvgSync } from '../../utils/logoHelper';
+import { ManasaLogoSvg, getQrSvgSync, getResolvedLogoUrl } from '../../utils/logoHelper';
 import { resolvePatientReferenceRange } from '../../utils/referenceRangeResolver';
 
 export const PublicReportView: React.FC = () => {
@@ -409,7 +409,7 @@ export const PublicReportView: React.FC = () => {
                       <td style={{ width: '120px', verticalAlign: 'middle', padding: 0 }}>
                         {logoUrl ? (
                           <img 
-                            src={logoUrl} 
+                            src={getResolvedLogoUrl(logoUrl) || logoUrl} 
                             alt={hospitalName} 
                             style={{ height: '70px', maxWidth: '140px', objectFit: 'contain', display: 'block' }} 
                             onError={(e) => {
