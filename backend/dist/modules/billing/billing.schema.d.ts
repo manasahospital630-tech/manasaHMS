@@ -26,6 +26,8 @@ export declare const createInvoiceSchema: z.ZodObject<{
     paymentMethod: z.ZodOptional<z.ZodString>;
     paidAmount: z.ZodOptional<z.ZodNumber>;
     amountPaid: z.ZodOptional<z.ZodNumber>;
+    doctorName: z.ZodOptional<z.ZodString>;
+    doctor_name: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     patientId: string;
     items: {
@@ -43,6 +45,8 @@ export declare const createInvoiceSchema: z.ZodObject<{
     encounterId?: string | undefined;
     paidAmount?: number | undefined;
     amountPaid?: number | undefined;
+    doctorName?: string | undefined;
+    doctor_name?: string | undefined;
 }, {
     patientId: string;
     items: {
@@ -60,6 +64,8 @@ export declare const createInvoiceSchema: z.ZodObject<{
     paymentStatus?: "Paid" | "Unpaid" | "PartiallyPaid" | undefined;
     paidAmount?: number | undefined;
     amountPaid?: number | undefined;
+    doctorName?: string | undefined;
+    doctor_name?: string | undefined;
 }>;
 export declare const recordPaymentSchema: z.ZodObject<{
     amountPaid: z.ZodNumber;

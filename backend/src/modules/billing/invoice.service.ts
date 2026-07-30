@@ -44,8 +44,8 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
     const invoiceNum = `INV-${Date.now().toString().slice(-6)}`;
 
     await client.query(
-      `INSERT INTO invoices (invoice_id, invoice_number, patient_id, encounter_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, due_amount, status, payment_method, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      `INSERT INTO invoices (invoice_id, invoice_number, patient_id, encounter_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, due_amount, status, payment_method, notes, doctor_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [
         invoiceId,
         invoiceNum,
@@ -60,7 +60,8 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
         dueAmount,
         status,
         paymentMethod,
-        input.notes || null
+        input.notes || null,
+        input.doctorName || input.doctor_name || null
       ]
     );
 
@@ -126,7 +127,18 @@ export const createInvoice = async (input: CreateInvoiceInput) => {
 
     if (diagnosticItems.length > 0) {
       let doctorId = null;
-      if (input.encounterId) {
+      if (input.doctorName || input.doctor_name) {
+        const docNameStr = (input.doctorName || input.doctor_name || '').toString();
+        const cleanDoc = docNameStr.replace(/^Dr\.\s*/i, '').split('(')[0].trim();
+        try {
+          const docMatch = await client.query(
+            "SELECT user_id FROM users WHERE CONCAT(first_name, ' ', COALESCE(last_name, '')) LIKE $1 LIMIT 1",
+            [`%${cleanDoc}%`]
+          );
+          if (docMatch.rows.length > 0) doctorId = docMatch.rows[0].user_id;
+        } catch (e) {}
+      }
+      if (!doctorId && input.encounterId) {
         try {
           const encRes = await client.query('SELECT provider_id FROM encounters WHERE encounter_id = $1', [input.encounterId]);
           if (encRes.rows.length > 0) doctorId = encRes.rows[0].provider_id;
@@ -238,6 +250,7 @@ export const getInvoiceById = async (id: string) => {
             p.first_name, p.last_name, p.phone, p.address, p.mrn as medical_record_number, FALSE as is_inpatient,
             p.gender, p.date_of_birth AS birth_date, 0 AS patient_age,
             COALESCE(
+              NULLIF(i.doctor_name, ''),
               (SELECT CASE 
                         WHEN u.first_name LIKE 'Dr%' THEN CONCAT(u.first_name, ' ', COALESCE(u.last_name, ''))
                         ELSE CONCAT('Dr. ', u.first_name, ' ', COALESCE(u.last_name, ''))
@@ -298,6 +311,7 @@ export const getAllInvoices = async (filters: { status?: string; limit?: number;
             p.mrn as patient_mrn,
             FALSE as is_inpatient,
             COALESCE(
+              NULLIF(i.doctor_name, ''),
               (SELECT CASE 
                         WHEN u.first_name LIKE 'Dr%' THEN CONCAT(u.first_name, ' ', COALESCE(u.last_name, ''))
                         ELSE CONCAT('Dr. ', u.first_name, ' ', COALESCE(u.last_name, ''))

@@ -19,6 +19,8 @@ exports.createInvoiceSchema = zod_1.z.object({
     paymentMethod: zod_1.z.string().optional(),
     paidAmount: zod_1.z.number().min(0).optional(),
     amountPaid: zod_1.z.number().min(0).optional(),
+    doctorName: zod_1.z.string().optional(),
+    doctor_name: zod_1.z.string().optional(),
 });
 exports.recordPaymentSchema = zod_1.z.object({
     amountPaid: zod_1.z.number().min(0.01, { message: 'Payment amount must be positive' }),

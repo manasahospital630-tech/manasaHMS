@@ -17,6 +17,8 @@ export const createInvoiceSchema = z.object({
   paymentMethod: z.string().optional(),
   paidAmount: z.number().min(0).optional(),
   amountPaid: z.number().min(0).optional(),
+  doctorName: z.string().optional(),
+  doctor_name: z.string().optional(),
 });
 
 export const recordPaymentSchema = z.object({
