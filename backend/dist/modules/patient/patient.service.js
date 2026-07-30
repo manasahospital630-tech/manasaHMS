@@ -195,7 +195,7 @@ const getPatientFullTimeline = async (patientId) => {
     try {
         const encountersRes = await (0, database_1.query)(`SELECT e.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as provider_name
        FROM encounters e
-       JOIN users u ON e.doctor_id = u.user_id
+       JOIN users u ON e.doctor_id COLLATE utf8mb4_unicode_ci = u.user_id COLLATE utf8mb4_unicode_ci
        WHERE e.patient_id = $1
        ORDER BY e.created_at DESC`, [patientId]);
         encounters = encountersRes.rows;
@@ -219,14 +219,14 @@ const getPatientFullTimeline = async (patientId) => {
     try {
         const rxRes = await (0, database_1.query)(`SELECT pr.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as doctor_name
        FROM prescriptions pr
-       LEFT JOIN users u ON pr.doctor_id = u.user_id
+       LEFT JOIN users u ON pr.doctor_id COLLATE utf8mb4_unicode_ci = u.user_id COLLATE utf8mb4_unicode_ci
        WHERE pr.patient_id = $1`, [patientId]);
         prescriptions = rxRes.rows;
         for (const rx of prescriptions) {
             try {
                 const itemsRes = await (0, database_1.query)(`SELECT pi.*, COALESCE(i.name, pi.medication_name) as med_name
            FROM prescription_items pi
-           LEFT JOIN inventory_items i ON pi.inventory_id = i.inventory_id
+           LEFT JOIN inventory_items i ON pi.inventory_id COLLATE utf8mb4_unicode_ci = i.inventory_id COLLATE utf8mb4_unicode_ci
            WHERE pi.prescription_id = $1`, [rx.prescription_id]);
                 rx.items = itemsRes.rows;
                 for (const item of itemsRes.rows) {
@@ -255,7 +255,7 @@ const getPatientFullTimeline = async (patientId) => {
     try {
         const labOrdersRes = await (0, database_1.query)(`SELECT tor.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as doctor_name
        FROM test_orders tor
-       LEFT JOIN users u ON tor.doctor_id = u.user_id
+       LEFT JOIN users u ON tor.doctor_id COLLATE utf8mb4_unicode_ci = u.user_id COLLATE utf8mb4_unicode_ci
        WHERE tor.patient_id = $1`, [patientId]);
         labOrders = labOrdersRes.rows;
         for (const order of labOrders) {
@@ -263,8 +263,8 @@ const getPatientFullTimeline = async (patientId) => {
                 const orderItemsRes = await (0, database_1.query)(`SELECT toi.*, ds.name as test_name, ds.service_code, ds.sample_required,
                   dc.name as category_name
            FROM test_order_items toi
-           LEFT JOIN diagnostic_services ds ON toi.service_id = ds.service_id
-           LEFT JOIN diagnostic_categories dc ON ds.category_id = dc.category_id
+           LEFT JOIN diagnostic_services ds ON toi.service_id COLLATE utf8mb4_unicode_ci = ds.service_id COLLATE utf8mb4_unicode_ci
+           LEFT JOIN diagnostic_categories dc ON ds.category_id COLLATE utf8mb4_unicode_ci = dc.category_id COLLATE utf8mb4_unicode_ci
            WHERE toi.order_id = $1`, [order.order_id]);
                 order.items = orderItemsRes.rows;
                 for (const item of order.items) {
@@ -287,9 +287,9 @@ const getPatientFullTimeline = async (patientId) => {
         }
         // Also include diagnostic test items & health packages from patient invoices
         try {
-            const invLabItemsRes = await (0, database_1.query)(`SELECT i.invoice_id, i.invoice_number, i.created_at, ii.item_id, ii.description as test_name, ii.amount
+            const invLabItemsRes = await (0, database_1.query)(`SELECT i.invoice_id, i.invoice_number, i.created_at, ii.item_id, ii.description as test_name
          FROM invoices i
-         JOIN invoice_items ii ON i.invoice_id = ii.invoice_id
+         JOIN invoice_items ii ON i.invoice_id COLLATE utf8mb4_unicode_ci = ii.invoice_id COLLATE utf8mb4_unicode_ci
          WHERE i.patient_id = $1`, [patientId]);
             for (const invItem of invLabItemsRes.rows) {
                 const desc = (invItem.test_name || '').toLowerCase();
@@ -340,7 +340,7 @@ const getPatientFullTimeline = async (patientId) => {
     try {
         const appointmentsRes = await (0, database_1.query)(`SELECT a.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as doctor_name
        FROM appointments a
-       LEFT JOIN users u ON a.doctor_id = u.user_id
+       LEFT JOIN users u ON a.doctor_id COLLATE utf8mb4_unicode_ci = u.user_id COLLATE utf8mb4_unicode_ci
        WHERE a.patient_id = $1`, [patientId]);
         upcomingAppointments = appointmentsRes.rows;
     }
