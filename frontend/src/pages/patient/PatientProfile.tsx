@@ -148,43 +148,44 @@ export const PatientProfile: React.FC = () => {
     fetchTimelineData();
   }, [patientId]);
 
-  const patient = data?.patient || {
-    first_name: 'Arthur',
-    last_name: 'Tailor',
-    gender: 'Male',
-    date_of_birth: '1993-04-06',
-    medical_record_number: 'PL12234213',
-    doctor_first_name: 'Alex',
-    doctor_last_name: 'Nguyen',
-    insurance_provider: 'Aetna Gold Plan',
-    insurance_policy_number: 'PL12234213',
-    allergies: 'Nuts, Eggs, Lactose'
-  };
+  const patient = data?.patient || null;
 
   const encounters = data?.encounters || [];
   const labOrders = data?.labOrders || [];
   const vitalsSeries = data?.vitalsSeries || [];
 
   // Compute Allergies List
-  const allergiesList = patient.allergies 
+  const allergiesList = patient?.allergies 
     ? patient.allergies.split(',').map((a: string) => a.trim()).filter(Boolean) 
-    : ['Nuts', 'Eggs', 'Lactose'];
+    : [];
 
   const currentV = data?.currentVitals || {};
   const vHist = data?.vitalsHistory || [];
+  const hasVitalsData = vHist.length > 0 || vitalsSeries.length > 0 || (currentV && Object.keys(currentV).length > 0);
   const latestVitals = vHist.length > 0 
     ? vHist[vHist.length - 1] 
     : (vitalsSeries.length > 0 ? vitalsSeries[vitalsSeries.length - 1] : currentV);
 
-  const weight = latestVitals.weight ? `${latestVitals.weight} lbs` : (latestVitals.weight_kg ? `${latestVitals.weight_kg} lbs` : '165 lbs');
-  const tempNum = parseFloat(latestVitals.temperature || (latestVitals.temperature_celsius ? (latestVitals.temperature_celsius * 1.8 + 32).toFixed(1) : 99.4));
-  const temp = `${tempNum}°F`;
-  const hr = Number(latestVitals.heartRate || latestVitals.pulse_rate || 140);
-  const spo2 = Number(latestVitals.oxygenSaturation || latestVitals.spo2 || 94);
+  const weight = hasVitalsData
+    ? (latestVitals.weight ? `${latestVitals.weight} lbs` : (latestVitals.weight_kg ? `${latestVitals.weight_kg} lbs` : '—'))
+    : '—';
 
-  const isTempHigh = tempNum > 99.0;
-  const isHrAbnormal = hr < 60 || hr > 100;
-  const isSpo2Low = spo2 < 95;
+  const tempNum = latestVitals.temperature !== undefined && latestVitals.temperature !== null
+    ? parseFloat(latestVitals.temperature)
+    : (latestVitals.temperature_celsius ? parseFloat((latestVitals.temperature_celsius * 1.8 + 32).toFixed(1)) : null);
+  const temp = tempNum !== null ? `${tempNum}°F` : '—';
+
+  const hr = latestVitals.heartRate !== undefined && latestVitals.heartRate !== null
+    ? Number(latestVitals.heartRate)
+    : (latestVitals.pulse_rate ? Number(latestVitals.pulse_rate) : null);
+
+  const spo2 = latestVitals.oxygenSaturation !== undefined && latestVitals.oxygenSaturation !== null
+    ? Number(latestVitals.oxygenSaturation)
+    : (latestVitals.spo2 ? Number(latestVitals.spo2) : null);
+
+  const isTempHigh = tempNum !== null && tempNum > 99.0;
+  const isHrAbnormal = hr !== null && (hr < 60 || hr > 100);
+  const isSpo2Low = spo2 !== null && spo2 < 95;
 
   // Dynamic Chart Data Points from vitals history or default fallback series
   const chartPoints = useMemo(() => {
@@ -312,6 +313,18 @@ export const PatientProfile: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '500px', flexDirection: 'column', gap: '16px' }}>
         <RefreshCw className="animate-spin" size={36} color="#3b82f6" />
         <p style={{ color: '#64748b', fontWeight: 600 }}>Loading Patient Chart & Medical History...</p>
+      </div>
+    );
+  }
+
+  if (!patient) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '500px', flexDirection: 'column', gap: '16px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', margin: '24px', padding: '40px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: 0 }}>Patient Record Not Found</h2>
+        <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>No medical record was found matching this Patient ID.</p>
+        <button onClick={() => navigate('/reception/patients')} style={{ padding: '10px 20px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', marginTop: '12px' }}>
+          ← Return to Patient Directory
+        </button>
       </div>
     );
   }

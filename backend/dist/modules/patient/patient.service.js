@@ -183,9 +183,8 @@ const givePortalAccess = async (patientId) => {
 exports.givePortalAccess = givePortalAccess;
 const getPatientFullTimeline = async (patientId) => {
     // 1. Core Patient Specs
-    const patientRes = await (0, database_1.query)(`SELECT p.*, d.first_name as doctor_first_name, d.last_name as doctor_last_name
+    const patientRes = await (0, database_1.query)(`SELECT p.*, p.mrn as medical_record_number
      FROM patients p
-     LEFT JOIN users d ON p.assigned_doctor_id = d.user_id
      WHERE p.patient_id = $1`, [patientId]);
     if (patientRes.rows.length === 0) {
         throw new errorHandler_1.AppError('Patient not found.', 404);
@@ -194,11 +193,11 @@ const getPatientFullTimeline = async (patientId) => {
     // 2. Encounters / Consultations (Fault tolerant)
     let encounters = [];
     try {
-        const encountersRes = await (0, database_1.query)(`SELECT e.*, u.first_name || ' ' || u.last_name as provider_name
+        const encountersRes = await (0, database_1.query)(`SELECT e.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as provider_name
        FROM encounters e
-       JOIN users u ON e.provider_id = u.user_id
+       JOIN users u ON e.doctor_id = u.user_id
        WHERE e.patient_id = $1
-       ORDER BY e.encounter_timestamp DESC`, [patientId]);
+       ORDER BY e.created_at DESC`, [patientId]);
         encounters = encountersRes.rows;
         for (const enc of encounters) {
             try {
@@ -218,7 +217,7 @@ const getPatientFullTimeline = async (patientId) => {
     let prescriptions = [];
     const activeMedications = [];
     try {
-        const rxRes = await (0, database_1.query)(`SELECT pr.*, u.first_name || ' ' || u.last_name as doctor_name
+        const rxRes = await (0, database_1.query)(`SELECT pr.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as doctor_name
        FROM prescriptions pr
        LEFT JOIN users u ON pr.doctor_id = u.user_id
        WHERE pr.patient_id = $1`, [patientId]);
@@ -254,7 +253,7 @@ const getPatientFullTimeline = async (patientId) => {
     // 4. Lab & Diagnostic Orders (Fault tolerant)
     let labOrders = [];
     try {
-        const labOrdersRes = await (0, database_1.query)(`SELECT tor.*, u.first_name || ' ' || u.last_name as doctor_name
+        const labOrdersRes = await (0, database_1.query)(`SELECT tor.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as doctor_name
        FROM test_orders tor
        LEFT JOIN users u ON tor.doctor_id = u.user_id
        WHERE tor.patient_id = $1`, [patientId]);
@@ -292,7 +291,7 @@ const getPatientFullTimeline = async (patientId) => {
     // 5. Vitals History Series for Trend Graphing (Fault tolerant)
     let vitalsSeries = [];
     try {
-        const vitalsSeriesRes = await (0, database_1.query)(`SELECT encounter_id, encounter_timestamp, systolic_bp, diastolic_bp, pulse_rate,
+        const vitalsSeriesRes = await (0, database_1.query)(`SELECT encounter_id, created_at as encounter_timestamp, systolic_bp, diastolic_bp, pulse_rate,
               temperature_celsius, weight_kg, spo2
        FROM encounters
        WHERE patient_id = $1`, [patientId]);
@@ -305,7 +304,7 @@ const getPatientFullTimeline = async (patientId) => {
     // 6. Upcoming Appointments (Fault tolerant)
     let upcomingAppointments = [];
     try {
-        const appointmentsRes = await (0, database_1.query)(`SELECT a.*, u.first_name || ' ' || u.last_name as doctor_name
+        const appointmentsRes = await (0, database_1.query)(`SELECT a.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as doctor_name
        FROM appointments a
        LEFT JOIN users u ON a.doctor_id = u.user_id
        WHERE a.patient_id = $1`, [patientId]);

@@ -227,9 +227,8 @@ export const givePortalAccess = async (patientId: string) => {
 export const getPatientFullTimeline = async (patientId: string) => {
   // 1. Core Patient Specs
   const patientRes = await query(
-    `SELECT p.*, d.first_name as doctor_first_name, d.last_name as doctor_last_name
+    `SELECT p.*, p.mrn as medical_record_number
      FROM patients p
-     LEFT JOIN users d ON p.assigned_doctor_id = d.user_id
      WHERE p.patient_id = $1`,
     [patientId]
   );
@@ -243,11 +242,11 @@ export const getPatientFullTimeline = async (patientId: string) => {
   let encounters: any[] = [];
   try {
     const encountersRes = await query(
-      `SELECT e.*, u.first_name || ' ' || u.last_name as provider_name
+      `SELECT e.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as provider_name
        FROM encounters e
-       JOIN users u ON e.provider_id = u.user_id
+       JOIN users u ON e.doctor_id = u.user_id
        WHERE e.patient_id = $1
-       ORDER BY e.encounter_timestamp DESC`,
+       ORDER BY e.created_at DESC`,
       [patientId]
     );
     encounters = encountersRes.rows;
@@ -273,7 +272,7 @@ export const getPatientFullTimeline = async (patientId: string) => {
   const activeMedications: any[] = [];
   try {
     const rxRes = await query(
-      `SELECT pr.*, u.first_name || ' ' || u.last_name as doctor_name
+      `SELECT pr.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as doctor_name
        FROM prescriptions pr
        LEFT JOIN users u ON pr.doctor_id = u.user_id
        WHERE pr.patient_id = $1`,
@@ -316,7 +315,7 @@ export const getPatientFullTimeline = async (patientId: string) => {
   let labOrders: any[] = [];
   try {
     const labOrdersRes = await query(
-      `SELECT tor.*, u.first_name || ' ' || u.last_name as doctor_name
+      `SELECT tor.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as doctor_name
        FROM test_orders tor
        LEFT JOIN users u ON tor.doctor_id = u.user_id
        WHERE tor.patient_id = $1`,
@@ -363,7 +362,7 @@ export const getPatientFullTimeline = async (patientId: string) => {
   let vitalsSeries: any[] = [];
   try {
     const vitalsSeriesRes = await query(
-      `SELECT encounter_id, encounter_timestamp, systolic_bp, diastolic_bp, pulse_rate,
+      `SELECT encounter_id, created_at as encounter_timestamp, systolic_bp, diastolic_bp, pulse_rate,
               temperature_celsius, weight_kg, spo2
        FROM encounters
        WHERE patient_id = $1`,
@@ -379,7 +378,7 @@ export const getPatientFullTimeline = async (patientId: string) => {
   let upcomingAppointments: any[] = [];
   try {
     const appointmentsRes = await query(
-      `SELECT a.*, u.first_name || ' ' || u.last_name as doctor_name
+      `SELECT a.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as doctor_name
        FROM appointments a
        LEFT JOIN users u ON a.doctor_id = u.user_id
        WHERE a.patient_id = $1`,
