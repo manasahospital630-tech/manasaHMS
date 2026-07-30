@@ -437,9 +437,10 @@ export const PatientProfile: React.FC = () => {
           order_id: order.order_id,
           order_number: order.order_number || order.order_id?.substring(0, 8),
           order_date: order.created_at,
+          result_date: item.result_entered_at || item.verified_at || item.sample_collected_at || item.updated_at || order.created_at,
           doctor_name: order.doctor_name || 'Consulting Physician',
           payment_status: order.payment_status || 'Paid',
-          order_status: order.status || 'Completed'
+          order_status: order.status || item.status || 'Completed'
         });
       });
     });
@@ -458,12 +459,13 @@ export const PatientProfile: React.FC = () => {
   const timelineEvents = useMemo(() => {
     const events: any[] = [];
 
-    // 1. Every Individual Diagnostic Test Report Date-Wise
+    // 1. Every Individual Diagnostic Test Report Date-Wise (using result entered / verified date)
     (allTestItems || []).forEach((item: any) => {
+      const reportDateVal = item.result_date || item.result_entered_at || item.verified_at || item.order_date || item.created_at;
       events.push({
         type: 'lab_report',
-        timestamp: new Date(item.order_date || item.created_at || Date.now()).getTime(),
-        dateStr: item.order_date || item.created_at,
+        timestamp: new Date(reportDateVal || Date.now()).getTime(),
+        dateStr: reportDateVal,
         item_id: item.item_id,
         order_number: item.order_number,
         test_name: item.test_name || item.name || 'Laboratory Test',

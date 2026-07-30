@@ -339,9 +339,11 @@ export const getPatientFullTimeline = async (patientId: string) => {
         for (const item of order.items) {
           try {
             const resultsRes = await query(
-              `SELECT lrp.*, lrp.parameter_name as name, lrp.actual_value as result_value
+              `SELECT lrp.*, lrp.parameter_name as name, lrp.actual_value as result_value,
+                      lrp.reference_range as normal_range, lrp.unit
                FROM lab_result_parameters lrp
-               WHERE lrp.order_item_id = $1`,
+               WHERE lrp.order_item_id = $1
+               ORDER BY lrp.created_at ASC`,
               [item.item_id]
             );
             item.results = resultsRes.rows;
