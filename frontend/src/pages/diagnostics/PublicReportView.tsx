@@ -549,10 +549,10 @@ export const PublicReportView: React.FC = () => {
                           <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '4px', marginBottom: '8px', fontSize: '11px' }}>
                             <thead>
                               <tr style={{ borderTop: '1.5px solid #0f172a', borderBottom: '1.5px solid #0f172a', textAlign: 'left', fontSize: '10px', color: '#475569' }}>
-                                <th style={{ padding: '6px 0', fontWeight: 700, width: '35%', textTransform: 'uppercase' }}>Test Parameter</th>
-                                <th style={{ padding: '6px 0', fontWeight: 700, width: '20%', textAlign: 'center', textTransform: 'uppercase' }}>Observed Value</th>
-                                <th style={{ padding: '6px 0', fontWeight: 700, width: '25%', textAlign: 'center', textTransform: 'uppercase' }}>Reference Range</th>
-                                <th style={{ padding: '6px 0', fontWeight: 700, width: '20%', textAlign: 'right', textTransform: 'uppercase' }}>Flag / Unit</th>
+                                <th style={{ padding: '6px 0', fontWeight: 700, width: '35%', textTransform: 'uppercase' }}>TEST PARAMETER</th>
+                                <th style={{ padding: '6px 0', fontWeight: 700, width: '20%', textAlign: 'center', textTransform: 'uppercase' }}>OBSERVED VALUE</th>
+                                <th style={{ padding: '6px 0', fontWeight: 700, width: '25%', textAlign: 'center', textTransform: 'uppercase' }}>REFERENCE RANGE</th>
+                                <th style={{ padding: '6px 0', fontWeight: 700, width: '20%', textAlign: 'right', textTransform: 'uppercase' }}>FLAG / UNIT</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -575,14 +575,16 @@ export const PublicReportView: React.FC = () => {
                                      (p.parameter_id && (p.parameter_id === rp.parameter_id || p.parameter_id === rp.parameterId)) ||
                                      (p.name && p.name.trim().toLowerCase() === (rp.parameter_name || rp.name || name || '').trim().toLowerCase())
                                    );
-                                   const refVal = resolvePatientReferenceRange(paramDef || rp, report);
-                                   const isAbnormal = (rp.status && rp.status !== 'Normal') || checkIsAbnormal(rp.actual_value || rp.actualValue || '', refVal);
-                                   const flagText = rp.status && rp.status !== 'Normal' ? `${rp.status} / ` : (isAbnormal ? 'Abnormal / ' : '');
-                                   const displayVal = rp.actual_value || rp.actualValue || '—';
+                                  const refName = paramDef?.ref_name || paramDef?.reference_range_name || (paramDef?.age_group && paramDef.age_group !== 'Universal' ? paramDef.age_group : '');
+                                  const parameterDisplayName = refName ? `${name} (${refName})` : name;
+                                  const refVal = resolvePatientReferenceRange(paramDef || rp, report);
+                                  const isAbnormal = (rp.status && rp.status !== 'Normal') || checkIsAbnormal(rp.actual_value || rp.actualValue || '', refVal);
+                                  const flagText = rp.status && rp.status !== 'Normal' ? `${rp.status} / ` : (isAbnormal ? 'Abnormal / ' : '');
+                                  const displayVal = rp.actual_value || rp.actualValue || '—';
 
                                   return (
                                     <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                      <td style={{ padding: '5px 0', fontWeight: 500, color: '#334155' }}>{name}</td>
+                                      <td style={{ padding: '5px 0', fontWeight: 500, color: '#334155' }}>{parameterDisplayName}</td>
                                       <td style={{ padding: '5px 0', textAlign: 'center', fontSize: '12px', fontWeight: isAbnormal ? '700' : '400', color: isAbnormal ? '#ef4444' : '#0f172a' }}>{displayVal}</td>
                                       <td style={{ padding: '5px 0', textAlign: 'center', color: '#475569', fontFamily: 'monospace', fontSize: '10px' }}>{refVal}</td>
                                       <td style={{ padding: '5px 0', textAlign: 'right', color: isAbnormal ? '#ef4444' : '#64748b', fontWeight: isAbnormal ? '700' : '400' }}>{flagText}{rp.unit || '—'}</td>

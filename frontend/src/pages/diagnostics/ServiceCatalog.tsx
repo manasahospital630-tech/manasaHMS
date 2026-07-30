@@ -395,11 +395,14 @@ export const ServiceCatalog: React.FC = () => {
     }
 
     // 2. Dynamic Report Layout Evaluation
-    const hasStructuredParameters = Boolean(
+    const isPackageType = item.type === 'package' || Boolean(item.package_id || (item.items && item.items.length > 0) || (item.package_items && item.package_items.length > 0));
+    const hasStructuredParameters = isPackageType || Boolean(
+      (item.items && item.items.length > 0) ||
+      (item.package_items && item.package_items.length > 0) ||
       (item.result_parameters && item.result_parameters.length > 0) ||
       (item.parameters && item.parameters.length > 0) ||
       (item.lab_result && item.lab_result.actual_result && item.lab_result.actual_result !== 'Multiple Values' && item.lab_result.actual_result !== '—') ||
-      (item.package_items && item.package_items.some((pi: any) => 
+      (item.order?.items && item.order.items.some((pi: any) => 
         (pi.result_parameters && pi.result_parameters.length > 0) || 
         (pi.parameters && pi.parameters.length > 0) || 
         (pi.lab_result && pi.lab_result.actual_result)
@@ -718,14 +721,18 @@ export const ServiceCatalog: React.FC = () => {
         'A/G RATIO': '1.0–2.2'
       };
 
-      // End of helper functions
-
       let pagesContentHtml = '';
 
       if (hasStructuredParameters) {
-        const targetItems = item.package_id
-          ? (item.order?.items || []).filter((i: any) => i.package_id === item.package_id)
-          : [item];
+        const targetItems = (item.items && item.items.length > 0)
+          ? item.items
+          : ((item.package_items && item.package_items.length > 0)
+              ? item.package_items
+              : (item.package_id
+                  ? (item.order?.items || []).filter((i: any) => i.package_id === item.package_id)
+                  : [item]
+                )
+            );
 
         pagesContentHtml = targetItems.map((tItem: any, pIdx: number) => {
           const tLr = tItem.lab_result || {};
