@@ -5,6 +5,7 @@ import { createPatientSchema, updatePatientSchema } from './patient.schema';
 import { authenticateJWT } from '../../middleware/authenticate';
 import { enforceRBAC } from '../../middleware/rbacHandler';
 import { auditLogger } from '../../middleware/auditLogger';
+import { uploadMiddleware } from '../../utils/fileUpload';
 
 const router = Router();
 
@@ -14,5 +15,10 @@ router.get('/:id', authenticateJWT, enforceRBAC(['Receptionist', 'Doctor', 'Nurs
 router.get('/:id/timeline', authenticateJWT, enforceRBAC(['Receptionist', 'Doctor', 'Nurse', 'Admin', 'Biller', 'Pharmacist', 'Patient']), patientController.getTimeline);
 router.put('/:id', authenticateJWT, enforceRBAC(['Admin']), validate(updatePatientSchema), auditLogger('UPDATE', 'Patient'), patientController.update);
 router.post('/:id/portal-access', authenticateJWT, enforceRBAC(['Receptionist', 'Admin', 'Biller']), auditLogger('CREATE', 'PatientPortalAccess'), patientController.givePortalAccess);
+
+// Patient Attachments
+router.post('/:id/attachments', authenticateJWT, enforceRBAC(['Receptionist', 'Doctor', 'Nurse', 'Admin', 'Biller']), uploadMiddleware.single('file'), patientController.uploadAttachment);
+router.get('/:id/attachments', authenticateJWT, enforceRBAC(['Receptionist', 'Doctor', 'Nurse', 'Admin', 'Biller', 'Pharmacist', 'Patient']), patientController.getAttachments);
+router.delete('/:id/attachments/:attachmentId', authenticateJWT, enforceRBAC(['Receptionist', 'Admin']), patientController.deleteAttachment);
 
 export default router;

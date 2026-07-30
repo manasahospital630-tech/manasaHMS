@@ -6,4 +6,7 @@ export declare const getById: (req: ProtectedRequest, res: Response, next: NextF
 export declare const update: (req: ProtectedRequest, res: Response, next: NextFunction) => Promise<void>;
 export declare const givePortalAccess: (req: ProtectedRequest, res: Response, next: NextFunction) => Promise<void>;
 export declare const getTimeline: (req: ProtectedRequest, res: Response, next: NextFunction) => Promise<void>;
+export declare const uploadAttachment: (req: ProtectedRequest, res: Response, next: NextFunction) => Promise<void>;
+export declare const getAttachments: (req: ProtectedRequest, res: Response, next: NextFunction) => Promise<void>;
+export declare const deleteAttachment: (req: ProtectedRequest, res: Response, next: NextFunction) => Promise<void>;
 //# sourceMappingURL=patient.controller.d.ts.map

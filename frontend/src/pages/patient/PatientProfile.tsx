@@ -4,7 +4,8 @@ import {
   User, ShieldAlert, HeartPulse, Activity, Calendar, FileText, Pill, Stethoscope,
   Plus, Printer, ArrowLeft, Search, Filter, Mic, Volume2, ExternalLink, CheckCircle,
   AlertTriangle, Clock, Phone, MapPin, Mail, Eye, RefreshCw, Zap, Info, ChevronRight,
-  TrendingUp, CreditCard, Shield, ArrowUpRight, Download, Bell, Sparkles, AlertCircle, Camera
+  TrendingUp, CreditCard, Shield, ArrowUpRight, Download, Bell, Sparkles, AlertCircle, Camera,
+  Paperclip, Upload, Trash2
 } from 'lucide-react';
 import api from '../../api/client';
 import { formatDateTime } from '../../utils/formatters';
@@ -200,7 +201,58 @@ export const PatientProfile: React.FC = () => {
   };
 
   // Active Navigation Tab
-  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'appointments' | 'reports' | 'tests' | 'imaging'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'appointments' | 'imaging' | 'attachments'>('overview');
+
+  // Attachments state
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [attachmentLoading, setAttachmentLoading] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadMeta, setUploadMeta] = useState({ document_type: 'Lab Report', description: '', document_date: '' });
+  const [uploading, setUploading] = useState(false);
+
+  const fetchAttachments = async () => {
+    if (!patientId) return;
+    setAttachmentLoading(true);
+    try {
+      const res = await api.get(`/patients/${patientId}/attachments`);
+      setAttachments(res.data?.data || []);
+    } catch { setAttachments([]); }
+    setAttachmentLoading(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'attachments') fetchAttachments();
+  }, [activeTab, patientId]);
+
+  const handleUploadAttachment = async () => {
+    if (!uploadFile || !patientId) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+      formData.append('document_type', uploadMeta.document_type);
+      formData.append('description', uploadMeta.description);
+      if (uploadMeta.document_date) formData.append('document_date', uploadMeta.document_date);
+      await api.post(`/patients/${patientId}/attachments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setShowUploadForm(false);
+      setUploadFile(null);
+      setUploadMeta({ document_type: 'Lab Report', description: '', document_date: '' });
+      fetchAttachments();
+    } catch (err) {
+      console.error('Upload failed:', err);
+      alert('Failed to upload attachment.');
+    }
+    setUploading(false);
+  };
+
+  const handleDeleteAttachment = async (attachmentId: string) => {
+    if (!confirm('Are you sure you want to delete this attachment?')) return;
+    try {
+      await api.delete(`/patients/${patientId}/attachments/${attachmentId}`);
+      fetchAttachments();
+    } catch { alert('Failed to delete attachment.'); }
+  };
 
   // Health Metrics Timeline Graph Metric
   const [metricTab, setMetricTab] = useState<'hr' | 'bp' | 'glucose' | 'spo2'>('bp');
@@ -610,9 +662,8 @@ export const PatientProfile: React.FC = () => {
             { id: 'overview', label: 'Overview' },
             { id: 'history', label: `History (${timelineEvents.length})` },
             { id: 'appointments', label: `Appointments (${(data?.upcomingAppointments || []).length})` },
-            { id: 'reports', label: `Medical Reports (${allTestItems.length})` },
-            { id: 'tests', label: `Medical Tests (${allTestItems.length})` },
-            { id: 'imaging', label: `Imaging (${imagingItems.length})` }
+            { id: 'imaging', label: `Imaging (${imagingItems.length})` },
+            { id: 'attachments', label: `Attachments (${attachments.length})` }
           ].map(t => (
             <button
               key={t.id}
@@ -1050,77 +1101,154 @@ export const PatientProfile: React.FC = () => {
         </div>
       )}
 
-      {/* MEDICAL REPORTS TAB */}
-      {activeTab === 'reports' && (
+      {/* ATTACHMENTS TAB */}
+      {activeTab === 'attachments' && (
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginTop: '10px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 16px 0', color: '#0f172a' }}>📑 Verified Medical Reports & PDFs</h3>
-          {allTestItems.length > 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0, color: '#0f172a' }}>📎 Patient Documents & Attachments</h3>
+            <button
+              onClick={() => setShowUploadForm(!showUploadForm)}
+              style={{ background: '#2563eb', color: '#ffffff', border: 'none', padding: '8px 18px', borderRadius: '10px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Upload size={15} /> Upload Document
+            </button>
+          </div>
+
+          {/* Upload Form */}
+          {showUploadForm && (
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#1e293b', marginBottom: '14px' }}>Upload New Document</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px', display: 'block' }}>Document Type</label>
+                  <select
+                    value={uploadMeta.document_type}
+                    onChange={(e) => setUploadMeta({ ...uploadMeta, document_type: e.target.value })}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#ffffff' }}
+                  >
+                    <option>Lab Report</option>
+                    <option>Prescription</option>
+                    <option>Discharge Summary</option>
+                    <option>X-Ray / Scan</option>
+                    <option>Insurance Document</option>
+                    <option>Referral Letter</option>
+                    <option>Previous Medical Records</option>
+                    <option>ID Proof</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px', display: 'block' }}>Document Date</label>
+                  <input
+                    type="date"
+                    value={uploadMeta.document_date}
+                    onChange={(e) => setUploadMeta({ ...uploadMeta, document_date: e.target.value })}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                  />
+                </div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px', display: 'block' }}>Description (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Blood test report from Apollo Hospital"
+                  value={uploadMeta.description}
+                  onChange={(e) => setUploadMeta({ ...uploadMeta, description: e.target.value })}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                />
+              </div>
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px', display: 'block' }}>Select File (PDF, Image, or Document)</label>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  style={{ fontSize: '13px', marginTop: '4px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={handleUploadAttachment}
+                  disabled={!uploadFile || uploading}
+                  style={{ background: !uploadFile ? '#94a3b8' : '#16a34a', color: '#ffffff', border: 'none', padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: !uploadFile ? 'not-allowed' : 'pointer' }}
+                >
+                  {uploading ? 'Uploading...' : '✓ Upload & Save'}
+                </button>
+                <button
+                  onClick={() => { setShowUploadForm(false); setUploadFile(null); }}
+                  style={{ background: '#e2e8f0', color: '#475569', border: 'none', padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Attachments Timeline */}
+          {attachmentLoading ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b' }}>Loading attachments...</div>
+          ) : attachments.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {allTestItems.map((item: any, idx: number) => (
-                <div key={idx} style={{ padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: '14px', color: '#0f172a' }}>{item.test_name || item.name}</div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                      Order #{item.order_number} | Category: {item.category_name || 'General'} | Doctor: Dr. {item.doctor_name}
+              {attachments.map((att: any, idx: number) => {
+                const docDate = att.document_date || att.created_at;
+                const formattedDate = docDate ? new Date(docDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+                const formattedTime = att.created_at ? new Date(att.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+                const fileExt = (att.original_name || '').split('.').pop()?.toLowerCase();
+                const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExt || '');
+                const isPdf = fileExt === 'pdf';
+                const baseUrl = (api.defaults?.baseURL || '').replace('/api', '');
+
+                return (
+                  <div key={att.attachment_id || idx} style={{ padding: '16px 18px', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#fafbfc', transition: 'box-shadow 0.2s' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flex: 1 }}>
+                        <div style={{ width: '44px', height: '44px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isPdf ? '#fef2f2' : isImage ? '#eff6ff' : '#f0fdf4', color: isPdf ? '#dc2626' : isImage ? '#2563eb' : '#16a34a', fontSize: '20px', flexShrink: 0 }}>
+                          {isPdf ? '📄' : isImage ? '🖼️' : '📎'}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a', marginBottom: '3px' }}>
+                            {att.original_name || att.file_name}
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                            <span style={{ background: '#eff6ff', color: '#2563eb', padding: '2px 8px', borderRadius: '6px', fontWeight: 600, fontSize: '11px' }}>
+                              {att.document_type || 'Other'}
+                            </span>
+                            <span>📅 {formattedDate} {formattedTime && `· ${formattedTime}`}</span>
+                            <span>📦 {att.file_size ? `${(att.file_size / 1024).toFixed(1)} KB` : 'N/A'}</span>
+                            {att.uploaded_by_name && <span>👤 {att.uploaded_by_name}</span>}
+                          </div>
+                          {att.description && (
+                            <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px', fontStyle: 'italic' }}>
+                              {att.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                        <button
+                          onClick={() => window.open(`${baseUrl}${att.file_path}`, '_blank')}
+                          style={{ background: '#2563eb', color: '#ffffff', border: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <Eye size={13} /> View
+                        </button>
+                        <button
+                          onClick={() => handleDeleteAttachment(att.attachment_id)}
+                          style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', padding: '6px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => window.open(`/public/reports/${item.item_id}`, '_blank')}
-                    style={{ background: '#2563eb', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    <FileText size={14} /> View Report PDF
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
-            <div style={{ color: '#64748b', fontSize: '13px', padding: '16px 0' }}>No medical report PDFs available for this patient.</div>
-          )}
-        </div>
-      )}
-
-      {/* MEDICAL TESTS TAB */}
-      {activeTab === 'tests' && (
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', marginTop: '10px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 800, margin: '0 0 16px 0', color: '#0f172a' }}>🧪 Diagnostic & Laboratory Tests Directory</h3>
-          {allTestItems.length > 0 ? (
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>TEST NAME</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>CATEGORY</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>SAMPLE</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', color: '#1e293b', fontWeight: 700 }}>STATUS</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', color: '#1e293b', fontWeight: 700 }}>ACTION</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allTestItems.map((item: any, idx: number) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#0f172a' }}>{item.test_name || item.name}</td>
-                      <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.category_name || 'General'}</td>
-                      <td style={{ padding: '12px 16px', color: '#64748b' }}>{item.sample_required || 'Blood'}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{ background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
-                          {item.status || 'Completed'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                        <button 
-                          onClick={() => window.open(`/public/reports/${item.item_id}`, '_blank')}
-                          style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '4px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          View Report
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ textAlign: 'center', padding: '50px 20px', color: '#94a3b8' }}>
+              <Paperclip size={40} style={{ marginBottom: '12px', opacity: 0.4 }} />
+              <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px' }}>No Attachments Yet</div>
+              <div style={{ fontSize: '12px' }}>Upload scanned documents, reports from other hospitals, prescriptions, or any medical documents for this patient.</div>
             </div>
-          ) : (
-            <div style={{ color: '#64748b', fontSize: '13px', padding: '16px 0' }}>No diagnostic test orders recorded for this patient.</div>
           )}
         </div>
       )}

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPatientFullTimeline = exports.givePortalAccess = exports.updatePatient = exports.getPatientById = exports.getPatients = exports.createPatient = void 0;
+exports.deletePatientAttachment = exports.getPatientAttachments = exports.addPatientAttachment = exports.getPatientFullTimeline = exports.givePortalAccess = exports.updatePatient = exports.getPatientById = exports.getPatients = exports.createPatient = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const uuid_1 = require("uuid");
 const database_1 = require("../../config/database");
@@ -389,4 +389,43 @@ const getPatientFullTimeline = async (patientId) => {
     };
 };
 exports.getPatientFullTimeline = getPatientFullTimeline;
+// ─── Patient Attachments ────────────────────────────────────────────────────
+const addPatientAttachment = async (patientId, file, meta, uploadedBy) => {
+    const attachmentId = (0, uuid_1.v4)();
+    const relativePath = `/uploads/documents/${file.filename}`;
+    await (0, database_1.query)(`INSERT INTO patient_attachments (attachment_id, patient_id, file_name, original_name, file_path, file_type, file_size, document_type, description, document_date, uploaded_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [
+        attachmentId,
+        patientId,
+        file.filename,
+        file.originalname,
+        relativePath,
+        file.mimetype,
+        file.size,
+        meta.document_type,
+        meta.description,
+        meta.document_date,
+        uploadedBy
+    ]);
+    const result = await (0, database_1.query)(`SELECT * FROM patient_attachments WHERE attachment_id = $1`, [attachmentId]);
+    return result.rows[0];
+};
+exports.addPatientAttachment = addPatientAttachment;
+const getPatientAttachments = async (patientId) => {
+    const result = await (0, database_1.query)(`SELECT pa.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as uploaded_by_name
+     FROM patient_attachments pa
+     LEFT JOIN users u ON pa.uploaded_by COLLATE utf8mb4_unicode_ci = u.user_id COLLATE utf8mb4_unicode_ci
+     WHERE pa.patient_id = $1
+     ORDER BY COALESCE(pa.document_date, pa.created_at) DESC`, [patientId]);
+    return result.rows;
+};
+exports.getPatientAttachments = getPatientAttachments;
+const deletePatientAttachment = async (attachmentId) => {
+    const result = await (0, database_1.query)(`DELETE FROM patient_attachments WHERE attachment_id = $1`, [attachmentId]);
+    if (result.rowCount === 0) {
+        throw new errorHandler_1.AppError('Attachment not found.', 404);
+    }
+    return { deleted: true };
+};
+exports.deletePatientAttachment = deletePatientAttachment;
 //# sourceMappingURL=patient.service.js.map

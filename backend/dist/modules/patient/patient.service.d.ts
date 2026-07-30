@@ -30,4 +30,13 @@ export declare const getPatientFullTimeline: (patientId: string) => Promise<{
     currentVitals: any;
     upcomingAppointments: any[];
 }>;
+export declare const addPatientAttachment: (patientId: string, file: Express.Multer.File, meta: {
+    document_type: string;
+    description: string;
+    document_date: string | null;
+}, uploadedBy: string | null) => Promise<any>;
+export declare const getPatientAttachments: (patientId: string) => Promise<any[]>;
+export declare const deletePatientAttachment: (attachmentId: string) => Promise<{
+    deleted: boolean;
+}>;
 //# sourceMappingURL=patient.service.d.ts.map

@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getTimeline = exports.givePortalAccess = exports.update = exports.getById = exports.getAll = exports.create = void 0;
+exports.deleteAttachment = exports.getAttachments = exports.uploadAttachment = exports.getTimeline = exports.givePortalAccess = exports.update = exports.getById = exports.getAll = exports.create = void 0;
 const responseHelper_1 = require("../../utils/responseHelper");
 const patientService = __importStar(require("./patient.service"));
 const create = async (req, res, next) => {
@@ -101,4 +101,43 @@ const getTimeline = async (req, res, next) => {
     }
 };
 exports.getTimeline = getTimeline;
+const uploadAttachment = async (req, res, next) => {
+    try {
+        const file = req.file;
+        if (!file) {
+            (0, responseHelper_1.errorResponse)(res, 'No file uploaded.', 400);
+            return;
+        }
+        const attachment = await patientService.addPatientAttachment(req.params.id, file, {
+            document_type: req.body.document_type || 'Other',
+            description: req.body.description || '',
+            document_date: req.body.document_date || null,
+        }, req.identity?.userId || null);
+        (0, responseHelper_1.successResponse)(res, attachment, 'Attachment uploaded successfully.', 201);
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.uploadAttachment = uploadAttachment;
+const getAttachments = async (req, res, next) => {
+    try {
+        const attachments = await patientService.getPatientAttachments(req.params.id);
+        (0, responseHelper_1.successResponse)(res, attachments);
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.getAttachments = getAttachments;
+const deleteAttachment = async (req, res, next) => {
+    try {
+        await patientService.deletePatientAttachment(req.params.attachmentId);
+        (0, responseHelper_1.successResponse)(res, null, 'Attachment deleted successfully.');
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.deleteAttachment = deleteAttachment;
 //# sourceMappingURL=patient.controller.js.map

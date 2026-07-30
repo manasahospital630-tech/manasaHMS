@@ -40,6 +40,7 @@ const patient_schema_1 = require("./patient.schema");
 const authenticate_1 = require("../../middleware/authenticate");
 const rbacHandler_1 = require("../../middleware/rbacHandler");
 const auditLogger_1 = require("../../middleware/auditLogger");
+const fileUpload_1 = require("../../utils/fileUpload");
 const router = (0, express_1.Router)();
 router.post('/', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Receptionist', 'Admin']), (0, validator_1.validate)(patient_schema_1.createPatientSchema), (0, auditLogger_1.auditLogger)('CREATE', 'Patient'), patientController.create);
 router.get('/', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Receptionist', 'Doctor', 'Nurse', 'Admin', 'Biller', 'Pharmacist']), patientController.getAll);
@@ -47,5 +48,9 @@ router.get('/:id', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC
 router.get('/:id/timeline', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Receptionist', 'Doctor', 'Nurse', 'Admin', 'Biller', 'Pharmacist', 'Patient']), patientController.getTimeline);
 router.put('/:id', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Admin']), (0, validator_1.validate)(patient_schema_1.updatePatientSchema), (0, auditLogger_1.auditLogger)('UPDATE', 'Patient'), patientController.update);
 router.post('/:id/portal-access', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Receptionist', 'Admin', 'Biller']), (0, auditLogger_1.auditLogger)('CREATE', 'PatientPortalAccess'), patientController.givePortalAccess);
+// Patient Attachments
+router.post('/:id/attachments', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Receptionist', 'Doctor', 'Nurse', 'Admin', 'Biller']), fileUpload_1.uploadMiddleware.single('file'), patientController.uploadAttachment);
+router.get('/:id/attachments', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Receptionist', 'Doctor', 'Nurse', 'Admin', 'Biller', 'Pharmacist', 'Patient']), patientController.getAttachments);
+router.delete('/:id/attachments/:attachmentId', authenticate_1.authenticateJWT, (0, rbacHandler_1.enforceRBAC)(['Receptionist', 'Admin']), patientController.deleteAttachment);
 exports.default = router;
 //# sourceMappingURL=patient.routes.js.map

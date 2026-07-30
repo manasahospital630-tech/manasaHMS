@@ -457,3 +457,63 @@ export const getPatientFullTimeline = async (patientId: string) => {
     upcomingAppointments
   };
 };
+
+// ─── Patient Attachments ────────────────────────────────────────────────────
+
+export const addPatientAttachment = async (
+  patientId: string,
+  file: Express.Multer.File,
+  meta: { document_type: string; description: string; document_date: string | null },
+  uploadedBy: string | null
+) => {
+  const attachmentId = uuidv4();
+  const relativePath = `/uploads/documents/${file.filename}`;
+
+  await query(
+    `INSERT INTO patient_attachments (attachment_id, patient_id, file_name, original_name, file_path, file_type, file_size, document_type, description, document_date, uploaded_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [
+      attachmentId,
+      patientId,
+      file.filename,
+      file.originalname,
+      relativePath,
+      file.mimetype,
+      file.size,
+      meta.document_type,
+      meta.description,
+      meta.document_date,
+      uploadedBy
+    ]
+  );
+
+  const result = await query(
+    `SELECT * FROM patient_attachments WHERE attachment_id = $1`,
+    [attachmentId]
+  );
+
+  return result.rows[0];
+};
+
+export const getPatientAttachments = async (patientId: string) => {
+  const result = await query(
+    `SELECT pa.*, CONCAT(u.first_name, ' ', COALESCE(u.last_name, '')) as uploaded_by_name
+     FROM patient_attachments pa
+     LEFT JOIN users u ON pa.uploaded_by COLLATE utf8mb4_unicode_ci = u.user_id COLLATE utf8mb4_unicode_ci
+     WHERE pa.patient_id = $1
+     ORDER BY COALESCE(pa.document_date, pa.created_at) DESC`,
+    [patientId]
+  );
+  return result.rows;
+};
+
+export const deletePatientAttachment = async (attachmentId: string) => {
+  const result = await query(
+    `DELETE FROM patient_attachments WHERE attachment_id = $1`,
+    [attachmentId]
+  );
+  if (result.rowCount === 0) {
+    throw new AppError('Attachment not found.', 404);
+  }
+  return { deleted: true };
+};

@@ -62,3 +62,44 @@ export const getTimeline = async (req: ProtectedRequest, res: Response, next: Ne
   }
 };
 
+export const uploadAttachment = async (req: ProtectedRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const file = req.file;
+    if (!file) {
+      errorResponse(res, 'No file uploaded.', 400);
+      return;
+    }
+    const attachment = await patientService.addPatientAttachment(
+      req.params.id as string,
+      file,
+      {
+        document_type: req.body.document_type || 'Other',
+        description: req.body.description || '',
+        document_date: req.body.document_date || null,
+      },
+      req.identity?.userId || null
+    );
+    successResponse(res, attachment, 'Attachment uploaded successfully.', 201);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAttachments = async (req: ProtectedRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const attachments = await patientService.getPatientAttachments(req.params.id as string);
+    successResponse(res, attachments);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteAttachment = async (req: ProtectedRequest, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    await patientService.deletePatientAttachment(req.params.attachmentId as string);
+    successResponse(res, null, 'Attachment deleted successfully.');
+  } catch (error) {
+    next(error);
+  }
+};
+
