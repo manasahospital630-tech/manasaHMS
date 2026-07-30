@@ -630,11 +630,6 @@ const MedicineSales: React.FC = () => {
                   <p>Phone: ${hospitalDetails?.phone_number || 'Ph: 7386301348'} | Web: ${hospitalDetails?.website || 'www.manasahospital.co.in'} | Email: ${hospitalDetails?.email || 'info@manasahospital.co.in'}</p>
                   ${hospitalDetails?.gstin ? `<p style="margin-top: 4px;"><strong>GSTIN: ${hospitalDetails.gstin}</strong></p>` : ''}
                 </td>
-                <td class="header-stamp">
-                  <div class="stamp-box">
-                    REG NO: ${hospitalDetails?.license_info || 'PR-2026/8508'}
-                  </div>
-                </td>
               </tr>
             </table>
 

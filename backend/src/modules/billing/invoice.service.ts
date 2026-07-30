@@ -237,7 +237,27 @@ export const getInvoiceById = async (id: string) => {
             CONCAT(p.first_name, ' ', p.last_name) as patient_name, 
             p.first_name, p.last_name, p.phone, p.address, p.mrn as medical_record_number, FALSE as is_inpatient,
             p.gender, p.date_of_birth AS birth_date, 0 AS patient_age,
-            'Hospital Doctor' as doctor_name
+            COALESCE(
+              (SELECT CASE 
+                        WHEN u.first_name LIKE 'Dr%' THEN CONCAT(u.first_name, ' ', COALESCE(u.last_name, ''))
+                        ELSE CONCAT('Dr. ', u.first_name, ' ', COALESCE(u.last_name, ''))
+                      END
+               FROM test_orders o 
+               JOIN users u ON o.doctor_id COLLATE utf8mb4_general_ci = u.user_id COLLATE utf8mb4_general_ci 
+               WHERE (o.order_number COLLATE utf8mb4_general_ci = i.invoice_number COLLATE utf8mb4_general_ci 
+                   OR o.order_number COLLATE utf8mb4_general_ci LIKE CONCAT('%', SUBSTRING_INDEX(i.invoice_id, '-', 1), '%')
+                   OR o.patient_id COLLATE utf8mb4_general_ci = i.patient_id COLLATE utf8mb4_general_ci)
+               ORDER BY o.created_at DESC LIMIT 1),
+              (SELECT CASE 
+                        WHEN u.first_name LIKE 'Dr%' THEN CONCAT(u.first_name, ' ', COALESCE(u.last_name, ''))
+                        ELSE CONCAT('Dr. ', u.first_name, ' ', COALESCE(u.last_name, ''))
+                      END
+               FROM appointments app 
+               JOIN users u ON app.doctor_id COLLATE utf8mb4_general_ci = u.user_id COLLATE utf8mb4_general_ci 
+               WHERE app.patient_id COLLATE utf8mb4_general_ci = i.patient_id COLLATE utf8mb4_general_ci 
+               ORDER BY app.created_at DESC LIMIT 1),
+              'Dr. System Admin'
+            ) as doctor_name
      FROM invoices i 
      JOIN patients p ON i.patient_id = p.patient_id COLLATE utf8mb4_unicode_ci
      WHERE i.invoice_id = $1`, [id]
@@ -277,7 +297,27 @@ export const getAllInvoices = async (filters: { status?: string; limit?: number;
             p.phone as patient_phone,
             p.mrn as patient_mrn,
             FALSE as is_inpatient,
-            'Hospital Doctor' as doctor_name
+            COALESCE(
+              (SELECT CASE 
+                        WHEN u.first_name LIKE 'Dr%' THEN CONCAT(u.first_name, ' ', COALESCE(u.last_name, ''))
+                        ELSE CONCAT('Dr. ', u.first_name, ' ', COALESCE(u.last_name, ''))
+                      END
+               FROM test_orders o 
+               JOIN users u ON o.doctor_id COLLATE utf8mb4_general_ci = u.user_id COLLATE utf8mb4_general_ci 
+               WHERE (o.order_number COLLATE utf8mb4_general_ci = i.invoice_number COLLATE utf8mb4_general_ci 
+                   OR o.order_number COLLATE utf8mb4_general_ci LIKE CONCAT('%', SUBSTRING_INDEX(i.invoice_id, '-', 1), '%')
+                   OR o.patient_id COLLATE utf8mb4_general_ci = i.patient_id COLLATE utf8mb4_general_ci)
+               ORDER BY o.created_at DESC LIMIT 1),
+              (SELECT CASE 
+                        WHEN u.first_name LIKE 'Dr%' THEN CONCAT(u.first_name, ' ', COALESCE(u.last_name, ''))
+                        ELSE CONCAT('Dr. ', u.first_name, ' ', COALESCE(u.last_name, ''))
+                      END
+               FROM appointments app 
+               JOIN users u ON app.doctor_id COLLATE utf8mb4_general_ci = u.user_id COLLATE utf8mb4_general_ci 
+               WHERE app.patient_id COLLATE utf8mb4_general_ci = i.patient_id COLLATE utf8mb4_general_ci 
+               ORDER BY app.created_at DESC LIMIT 1),
+              'Dr. System Admin'
+            ) as doctor_name
      FROM invoices i
      JOIN patients p ON i.patient_id = p.patient_id COLLATE utf8mb4_unicode_ci
      ${whereClause} 

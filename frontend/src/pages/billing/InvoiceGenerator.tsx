@@ -738,9 +738,6 @@ const InvoiceGenerator: React.FC = () => {
                     <p class="hospital-sub">Phone: ${phoneNumber} | Web: ${website} | Email: ${email}</p>
                     <p class="hospital-sub"><strong>GSTIN: ${gstin}</strong></p>
                   </div>
-                  <div class="stamp-col">
-                    <div class="reg-stamp">REG NO: ${licenseInfo}</div>
-                  </div>
                 </div>
 
                 <div class="divider-thick"></div>
@@ -757,7 +754,10 @@ const InvoiceGenerator: React.FC = () => {
                     </tr>
                     <tr>
                       <td style="padding: 4px 0; color: #475569; font-weight: 600;">Consultant</td>
-                      <td style="padding: 4px 0; font-weight: 700;">: ${inv.doctor_name || effectiveConsultantDoctor}</td>
+                      <td style="padding: 4px 0; font-weight: 700;">: ${(() => {
+                        const rawDoc = (inv.doctor_name && inv.doctor_name !== 'Hospital Doctor') ? inv.doctor_name : (effectiveConsultantDoctor && effectiveConsultantDoctor !== 'Hospital Doctor' ? effectiveConsultantDoctor : 'Dr. System Admin');
+                        return rawDoc.startsWith('Dr.') ? rawDoc : `Dr. ${rawDoc}`;
+                      })()}</td>
                       <td style="padding: 4px 0; color: #475569; font-weight: 600;">Referred By</td>
                       <td style="padding: 4px 0; font-weight: 700;">: ${effectiveReferredBy}</td>
                     </tr>
@@ -2038,7 +2038,7 @@ const InvoiceGenerator: React.FC = () => {
                           )}
                         </td>
                         <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                          {inv.doctor_name || 'Hospital Doctor'}
+                          {inv.doctor_name && inv.doctor_name !== 'Hospital Doctor' ? (inv.doctor_name.startsWith('Dr.') ? inv.doctor_name : `Dr. ${inv.doctor_name}`) : 'Dr. System Admin'}
                         </td>
                         <td style={{ padding: '12px 16px', fontWeight: 700 }}>{formatCurrency(totalAmt)}</td>
                         <td style={{ padding: '12px 16px', color: '#16a34a', fontWeight: 600 }}>{formatCurrency(paidAmt)}</td>
