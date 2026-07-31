@@ -390,9 +390,21 @@ export const PatientProfile: React.FC = () => {
     ? Number(latestVitals.oxygenSaturation)
     : (latestVitals.spo2 ? Number(latestVitals.spo2) : null);
 
+  // Blood Pressure
+  const systolicBp = latestVitals.bloodPressure?.systolic || latestVitals.systolicBp || latestVitals.systolic_bp || null;
+  const diastolicBp = latestVitals.bloodPressure?.diastolic || latestVitals.diastolicBp || latestVitals.diastolic_bp || null;
+  const bpSys = systolicBp ? Number(systolicBp) : null;
+  const bpDia = diastolicBp ? Number(diastolicBp) : null;
+
+  // Glucose Level
+  const glucoseRaw = latestVitals.glucoseLevel || latestVitals.glucose_level || latestVitals.glucose || latestVitals.bloodSugar || latestVitals.blood_sugar || null;
+  const glucose = glucoseRaw ? Number(glucoseRaw) : null;
+
   const isTempHigh = tempNum !== null && tempNum > 99.0;
   const isHrAbnormal = hr !== null && (hr < 60 || hr > 100);
   const isSpo2Low = spo2 !== null && spo2 < 95;
+  const isBpAbnormal = bpSys !== null && (bpSys > 140 || bpSys < 90 || (bpDia !== null && (bpDia > 90 || bpDia < 60)));
+  const isGlucoseAbnormal = glucose !== null && (glucose > 140 || glucose < 70);
 
   // Dynamic Chart Data Points from vitals history or default fallback series
   const chartPoints = useMemo(() => {
@@ -808,8 +820,8 @@ export const PatientProfile: React.FC = () => {
         {/* ========================================================================= */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
-          {/* TOP 4 VITALS CARDS */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+          {/* TOP 6 VITALS CARDS */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
             
             {/* Weight Card */}
             <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
@@ -830,6 +842,20 @@ export const PatientProfile: React.FC = () => {
               </div>
             </div>
 
+            {/* Blood Pressure Card */}
+            <div style={{ background: '#ffffff', border: `1px solid ${isBpAbnormal ? '#fecaca' : '#f1f5f9'}`, borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Blood Pressure</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '12px' }}>
+                <span style={{ fontSize: '24px', fontWeight: 800, color: isBpAbnormal ? '#dc2626' : '#0f172a' }}>
+                  {bpSys !== null && bpDia !== null ? `${bpSys}/${bpDia}` : '—'}
+                  {bpSys !== null && <span style={{ fontSize: '13px', fontWeight: 600, color: '#94a3b8', marginLeft: '4px' }}>mmHg</span>}
+                </span>
+                {isBpAbnormal && (
+                  <span style={{ background: '#ffe4e6', color: '#be123c', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>Abnormal</span>
+                )}
+              </div>
+            </div>
+
             {/* Heart Rate Card */}
             <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
               <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Heart Rate</div>
@@ -845,13 +871,29 @@ export const PatientProfile: React.FC = () => {
 
             {/* Oxygen Saturation Card */}
             <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Oxygen Saturation</div>
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>SpO2 Oxygen</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '12px' }}>
                 <span style={{ fontSize: '24px', fontWeight: 800, color: isSpo2Low ? '#dc2626' : '#0f172a' }}>
                   {spo2 !== null ? `${spo2}%` : '—'}
                 </span>
                 {isSpo2Low && (
                   <span style={{ background: '#ffe4e6', color: '#be123c', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>Low</span>
+                )}
+              </div>
+            </div>
+
+            {/* Glucose Level Card */}
+            <div style={{ background: '#ffffff', border: `1px solid ${isGlucoseAbnormal ? '#fecaca' : '#f1f5f9'}`, borderRadius: '20px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Glucose Level</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '12px' }}>
+                <span style={{ fontSize: '24px', fontWeight: 800, color: isGlucoseAbnormal ? '#dc2626' : '#0f172a' }}>
+                  {glucose !== null ? `${glucose}` : '—'}
+                  {glucose !== null && <span style={{ fontSize: '13px', fontWeight: 600, color: '#94a3b8', marginLeft: '4px' }}>mg/dL</span>}
+                </span>
+                {isGlucoseAbnormal && (
+                  <span style={{ background: '#ffe4e6', color: '#be123c', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px' }}>
+                    {glucose !== null && glucose > 140 ? 'High' : 'Low'}
+                  </span>
                 )}
               </div>
             </div>
