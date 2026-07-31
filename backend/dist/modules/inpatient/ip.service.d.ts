@@ -5,7 +5,6 @@ export declare const admitRoutine: (input: RoutineAdmissionInput) => Promise<any
 export declare const admitEmergencyFastTrack: (input: EmergencyFastTrackInput) => Promise<{
     patient: any;
     admission: any;
-    invoice_id: any;
 }>;
 export declare const transferBed: (input: TransferBedInput, userId: string) => Promise<{
     success: boolean;

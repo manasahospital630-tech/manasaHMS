@@ -28,13 +28,14 @@ export const transferBedSchema = z.object({
 export const bedSchema = z.object({
   bedNumber: z.string().min(1),
   wardName: z.string().min(1),
-  type: z.enum(['Emergency', 'ICU', 'General_Ward', 'Semi_Private', 'Private_Suite']),
+  wardType: z.enum(['Emergency', 'ICU', 'General', 'Semi_Private', 'Private_Suite']).default('General'),
   status: z.enum(['Available', 'Occupied', 'Maintenance']).default('Available'),
-  perDayCharge: z.number().positive(),
-  floor: z.string().min(1).default('1st Floor')
+  dailyRate: z.number().positive().default(1500),
+  floor: z.coerce.number().int().min(0).default(1)
 });
 
 export type RoutineAdmissionInput = z.infer<typeof routineAdmissionSchema>;
 export type EmergencyFastTrackInput = z.infer<typeof emergencyFastTrackSchema>;
 export type TransferBedInput = z.infer<typeof transferBedSchema>;
 export type BedInput = z.infer<typeof bedSchema>;
+

@@ -62,24 +62,24 @@ export declare const transferBedSchema: z.ZodObject<{
 export declare const bedSchema: z.ZodObject<{
     bedNumber: z.ZodString;
     wardName: z.ZodString;
-    type: z.ZodEnum<["Emergency", "ICU", "General_Ward", "Semi_Private", "Private_Suite"]>;
+    wardType: z.ZodDefault<z.ZodEnum<["Emergency", "ICU", "General", "Semi_Private", "Private_Suite"]>>;
     status: z.ZodDefault<z.ZodEnum<["Available", "Occupied", "Maintenance"]>>;
-    perDayCharge: z.ZodNumber;
-    floor: z.ZodDefault<z.ZodString>;
+    dailyRate: z.ZodDefault<z.ZodNumber>;
+    floor: z.ZodDefault<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     status: "Available" | "Occupied" | "Maintenance";
-    type: "Emergency" | "ICU" | "General_Ward" | "Semi_Private" | "Private_Suite";
     bedNumber: string;
     wardName: string;
-    perDayCharge: number;
-    floor: string;
+    wardType: "General" | "Emergency" | "ICU" | "Semi_Private" | "Private_Suite";
+    dailyRate: number;
+    floor: number;
 }, {
-    type: "Emergency" | "ICU" | "General_Ward" | "Semi_Private" | "Private_Suite";
     bedNumber: string;
     wardName: string;
-    perDayCharge: number;
     status?: "Available" | "Occupied" | "Maintenance" | undefined;
-    floor?: string | undefined;
+    wardType?: "General" | "Emergency" | "ICU" | "Semi_Private" | "Private_Suite" | undefined;
+    dailyRate?: number | undefined;
+    floor?: number | undefined;
 }>;
 export type RoutineAdmissionInput = z.infer<typeof routineAdmissionSchema>;
 export type EmergencyFastTrackInput = z.infer<typeof emergencyFastTrackSchema>;

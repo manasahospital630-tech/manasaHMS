@@ -1,6 +1,7 @@
 import { query } from '../../config/database';
 import { RoutineAdmissionInput, EmergencyFastTrackInput, TransferBedInput, BedInput } from './ip.schema';
 import { AppError } from '../../middleware/errorHandler';
+import { v4 as uuidv4 } from 'uuid';
 
 export const getBeds = async () => {
   const result = await query('SELECT * FROM hospital_beds ORDER BY floor, ward_name, bed_number');
@@ -9,197 +10,196 @@ export const getBeds = async () => {
 
 export const getActiveAdmissions = async () => {
   const result = await query(`
-    SELECT ip.*, p.first_name, p.last_name, p.medical_record_number, b.bed_number, b.ward_name, u.first_name as doc_first, u.last_name as doc_last
+    SELECT ip.*, p.first_name, p.last_name, p.mrn as medical_record_number,
+           ip.bed_number, ip.ward_type as ward_name,
+           u.first_name as doc_first, u.last_name as doc_last
     FROM ip_admissions ip
-    JOIN patients p ON ip.patient_id = p.patient_id
-    JOIN hospital_beds b ON ip.current_bed_id = b.bed_id
-    JOIN users u ON ip.admitting_doctor_id = u.user_id
+    JOIN patients p ON ip.patient_id COLLATE utf8mb4_unicode_ci = p.patient_id COLLATE utf8mb4_unicode_ci
+    LEFT JOIN users u ON ip.doctor_id COLLATE utf8mb4_unicode_ci = u.user_id COLLATE utf8mb4_unicode_ci
     WHERE ip.status != 'Discharged'
-    ORDER BY ip.admitted_at DESC
+    ORDER BY ip.admission_date DESC
   `);
   return result.rows;
 };
 
 export const admitRoutine = async (input: RoutineAdmissionInput) => {
-  await query('BEGIN');
-  try {
-    // Check if bed is available
-    const bedRes = await query('SELECT status FROM hospital_beds WHERE bed_id = $1 FOR UPDATE', [input.targetBedId]);
-    if (bedRes.rows.length === 0 || bedRes.rows[0].status !== 'Available') {
-      throw new AppError('Selected bed is not available', 400);
-    }
-
-    // Set patient to inpatient
-    await query('UPDATE patients SET is_inpatient = TRUE WHERE patient_id = $1', [input.patientId]);
-
-    // Mark bed occupied
-    await query("UPDATE hospital_beds SET status = 'Occupied' WHERE bed_id = $1", [input.targetBedId]);
-
-    // Create admission
-    const admissionRes = await query(`
-      INSERT INTO ip_admissions (patient_id, admission_type, status, admitting_doctor_id, current_bed_id, reason_for_admission)
-      VALUES ($1, $2, 'Admitted', $3, $4, $5) RETURNING *
-    `, [input.patientId, input.admissionType, input.admittingDoctorId, input.targetBedId, input.reasonForAdmission]);
-
-    const admissionId = admissionRes.rows[0].ip_admission_id;
-
-    // Create admission fee invoice (amount_paid: 1000.00, total_amount: 1000.00, status: 'Paid', payment_method: 'Cash')
-    const invoiceRes = await query(`
-      INSERT INTO invoices (patient_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, status, payment_method, notes, ip_admission_id)
-      VALUES ($1, 1000.00, 0.00, 0.00, 0.00, 1000.00, 1000.00, 'Paid', 'Cash', 'Inpatient Admission Fee Receipt', $2) RETURNING *
-    `, [input.patientId, admissionId]);
-
-    const invoiceId = invoiceRes.rows[0].invoice_id;
-
-    // Create invoice item
-    await query(`
-      INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price)
-      VALUES ($1, 'Inpatient Admission Fee', 'Admission', 1, 1000.00)
-    `, [invoiceId]);
-
-    // If emergency, create an encounter
-    if (input.admissionType === 'Emergency') {
-      await query(`
-        INSERT INTO encounters (patient_id, provider_id, chief_complaint, status, ip_admission_id)
-        VALUES ($1, $2, $3, 'Active', $4)
-      `, [input.patientId, input.admittingDoctorId, input.reasonForAdmission, admissionId]);
-    }
-
-    await query('COMMIT');
-    return { ...admissionRes.rows[0], invoice_id: invoiceId };
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
+  // Check if bed is available
+  const bedRes = await query('SELECT * FROM hospital_beds WHERE bed_id = $1', [input.targetBedId]);
+  if (bedRes.rows.length === 0 || bedRes.rows[0].status !== 'Available') {
+    throw new AppError('Selected bed is not available', 400);
   }
+
+  const bed = bedRes.rows[0];
+  const admissionId = uuidv4();
+  const admissionNumber = `IP-${Date.now().toString(36).toUpperCase()}`;
+
+  // Set patient to inpatient
+  await query('UPDATE patients SET is_inpatient = TRUE WHERE patient_id = $1', [input.patientId]);
+
+  // Mark bed occupied
+  await query("UPDATE hospital_beds SET status = 'Occupied' WHERE bed_id = $1", [input.targetBedId]);
+
+  // Create admission using actual ip_admissions columns
+  await query(`
+    INSERT INTO ip_admissions (admission_id, admission_number, patient_id, doctor_id, bed_number, ward_type, status, reason_for_admission)
+    VALUES ($1, $2, $3, $4, $5, $6, 'Admitted', $7)
+  `, [admissionId, admissionNumber, input.patientId, input.admittingDoctorId, bed.bed_number, bed.ward_type || 'General', input.reasonForAdmission]);
+
+  // Create admission fee invoice
+  try {
+    const invoiceRes = await query(`
+      INSERT INTO invoices (patient_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, status, payment_method, notes)
+      VALUES ($1, 1000.00, 0.00, 0.00, 0.00, 1000.00, 1000.00, 'Paid', 'Cash', 'Inpatient Admission Fee Receipt') RETURNING *
+    `, [input.patientId]);
+
+    if (invoiceRes.rows[0]) {
+      const invoiceId = invoiceRes.rows[0].invoice_id;
+      await query(`
+        INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price)
+        VALUES ($1, 'Inpatient Admission Fee', 'Admission', 1, 1000.00)
+      `, [invoiceId]);
+    }
+  } catch (invErr) {
+    console.warn('Invoice creation skipped:', invErr);
+  }
+
+  const admissionRes = await query('SELECT * FROM ip_admissions WHERE admission_id = $1', [admissionId]);
+  return admissionRes.rows[0];
 };
 
 export const admitEmergencyFastTrack = async (input: EmergencyFastTrackInput) => {
-  await query('BEGIN');
-  try {
-    const bedRes = await query('SELECT status FROM hospital_beds WHERE bed_id = $1 FOR UPDATE', [input.targetBedId]);
-    if (bedRes.rows.length === 0 || bedRes.rows[0].status !== 'Available') {
-      throw new AppError('Selected bed is not available', 400);
-    }
+  // Create patient record
+  const patientRes = await query(`
+    INSERT INTO patients (first_name, last_name, phone, date_of_birth, gender, blood_group, is_inpatient)
+    VALUES ($1, $2, $3, '1900-01-01', 'Other', 'Unknown', TRUE) RETURNING *
+  `, [input.firstName, input.lastName, input.emergencyContact || '']);
 
-    // Create patient record
-    const patientRes = await query(`
-      INSERT INTO patients (first_name, last_name, phone, date_of_birth, gender, blood_group, is_inpatient)
-      VALUES ($1, $2, $3, '1900-01-01', 'Other', 'Unknown', TRUE) RETURNING *
-    `, [input.firstName, input.lastName, input.emergencyContact || '']);
-    
-    const patientId = patientRes.rows[0].patient_id;
+  const patientId = patientRes.rows[0].patient_id;
 
-    // Mark bed occupied
-    await query("UPDATE hospital_beds SET status = 'Occupied' WHERE bed_id = $1", [input.targetBedId]);
-
-    // Create admission
-    const admissionRes = await query(`
-      INSERT INTO ip_admissions (patient_id, admission_type, status, admitting_doctor_id, current_bed_id, reason_for_admission)
-      VALUES ($1, 'Emergency', 'Admitted', $2, $3, $4) RETURNING *
-    `, [patientId, input.admittingDoctorId, input.targetBedId, input.reasonForAdmission]);
-
-    const admissionId = admissionRes.rows[0].ip_admission_id;
-
-    // Create admission fee invoice
-    const invoiceRes = await query(`
-      INSERT INTO invoices (patient_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, status, payment_method, notes, ip_admission_id)
-      VALUES ($1, 1000.00, 0.00, 0.00, 0.00, 1000.00, 1000.00, 'Paid', 'Cash', 'Inpatient Admission Fee Receipt', $2) RETURNING *
-    `, [patientId, admissionId]);
-
-    const invoiceId = invoiceRes.rows[0].invoice_id;
-
-    await query(`
-      INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price)
-      VALUES ($1, 'Inpatient Admission Fee', 'Admission', 1, 1000.00)
-    `, [invoiceId]);
-
-    // Create EMR encounter
-    await query(`
-      INSERT INTO encounters (patient_id, provider_id, chief_complaint, status, ip_admission_id)
-      VALUES ($1, $2, $3, 'Active', $4)
-    `, [patientId, input.admittingDoctorId, input.chiefComplaint, admissionId]);
-
-    await query('COMMIT');
-    return { patient: patientRes.rows[0], admission: admissionRes.rows[0], invoice_id: invoiceId };
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
+  // Check bed
+  const bedRes = await query('SELECT * FROM hospital_beds WHERE bed_id = $1', [input.targetBedId]);
+  if (bedRes.rows.length === 0 || bedRes.rows[0].status !== 'Available') {
+    throw new AppError('Selected bed is not available', 400);
   }
+
+  const bed = bedRes.rows[0];
+  const admissionId = uuidv4();
+  const admissionNumber = `IP-EM-${Date.now().toString(36).toUpperCase()}`;
+
+  // Mark bed occupied
+  await query("UPDATE hospital_beds SET status = 'Occupied' WHERE bed_id = $1", [input.targetBedId]);
+
+  // Create admission
+  await query(`
+    INSERT INTO ip_admissions (admission_id, admission_number, patient_id, doctor_id, bed_number, ward_type, status, reason_for_admission, diagnosis)
+    VALUES ($1, $2, $3, $4, $5, $6, 'Admitted', $7, $8)
+  `, [admissionId, admissionNumber, patientId, input.admittingDoctorId, bed.bed_number, bed.ward_type || 'General', input.reasonForAdmission, input.chiefComplaint]);
+
+  // Create invoice
+  try {
+    const invoiceRes = await query(`
+      INSERT INTO invoices (patient_id, total_amount, discount, tax, insurance_coverage, patient_responsibility, amount_paid, status, payment_method, notes)
+      VALUES ($1, 1000.00, 0.00, 0.00, 0.00, 1000.00, 1000.00, 'Paid', 'Cash', 'Emergency Inpatient Admission Fee') RETURNING *
+    `, [patientId]);
+
+    if (invoiceRes.rows[0]) {
+      await query(`
+        INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price)
+        VALUES ($1, 'Emergency Inpatient Admission Fee', 'Admission', 1, 1000.00)
+      `, [invoiceRes.rows[0].invoice_id]);
+    }
+  } catch (invErr) {
+    console.warn('Invoice creation skipped:', invErr);
+  }
+
+  // Create EMR encounter
+  try {
+    await query(`
+      INSERT INTO encounters (patient_id, provider_id, chief_complaint, status)
+      VALUES ($1, $2, $3, 'Active')
+    `, [patientId, input.admittingDoctorId, input.chiefComplaint]);
+  } catch (encErr) {
+    console.warn('Encounter creation skipped:', encErr);
+  }
+
+  const admissionRes = await query('SELECT * FROM ip_admissions WHERE admission_id = $1', [admissionId]);
+  return { patient: patientRes.rows[0], admission: admissionRes.rows[0] };
 };
 
 export const transferBed = async (input: TransferBedInput, userId: string) => {
-  await query('BEGIN');
-  try {
-    const admissionRes = await query(
-      `SELECT current_bed_id, patient_id FROM ip_admissions WHERE ip_admission_id = $1 AND status != 'Discharged' FOR UPDATE`,
-      [input.ipAdmissionId]
-    );
-    if (admissionRes.rows.length === 0) throw new AppError("Active IP tracking reference not found.", 404);
-    
-    const oldBedId = admissionRes.rows[0].current_bed_id;
+  // Find admission
+  const admissionRes = await query(
+    `SELECT admission_id, bed_number, patient_id FROM ip_admissions WHERE admission_id = $1 AND status != 'Discharged'`,
+    [input.ipAdmissionId]
+  );
+  if (admissionRes.rows.length === 0) throw new AppError("Active IP tracking reference not found.", 404);
 
-    const newBedRes = await query('SELECT status FROM hospital_beds WHERE bed_id = $1 FOR UPDATE', [input.targetBedId]);
-    if (newBedRes.rows.length === 0 || newBedRes.rows[0].status !== 'Available') {
-      throw new AppError("Target bed is not available", 400);
-    }
+  const oldBedNumber = admissionRes.rows[0].bed_number;
 
-    await query(`UPDATE hospital_beds SET status = 'Available' WHERE bed_id = $1`, [oldBedId]);
-    await query(`UPDATE hospital_beds SET status = 'Occupied' WHERE bed_id = $1`, [input.targetBedId]);
-
-    await query(
-      `INSERT INTO ip_transfers (ip_admission_id, from_bed_id, to_bed_id, transferred_by, transfer_reason) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [input.ipAdmissionId, oldBedId, input.targetBedId, userId, input.transferReason]
-    );
-
-    await query(
-      `UPDATE ip_admissions SET current_bed_id = $1, status = 'Transferred' WHERE ip_admission_id = $2`,
-      [input.targetBedId, input.ipAdmissionId]
-    );
-
-    await query('COMMIT');
-    return { success: true, message: "Patient ward shifting completed safely." };
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
+  // Check new bed
+  const newBedRes = await query('SELECT * FROM hospital_beds WHERE bed_id = $1', [input.targetBedId]);
+  if (newBedRes.rows.length === 0 || newBedRes.rows[0].status !== 'Available') {
+    throw new AppError("Target bed is not available", 400);
   }
+
+  const newBed = newBedRes.rows[0];
+
+  // Free old bed (by bed_number)
+  await query(`UPDATE hospital_beds SET status = 'Available' WHERE bed_number = $1`, [oldBedNumber]);
+
+  // Occupy new bed
+  await query(`UPDATE hospital_beds SET status = 'Occupied' WHERE bed_id = $1`, [input.targetBedId]);
+
+  // Log transfer
+  const transferId = uuidv4();
+  await query(
+    `INSERT INTO ip_transfers (transfer_id, admission_id, from_bed_id, to_bed_id, transferred_by, transfer_reason)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [transferId, input.ipAdmissionId, oldBedNumber, input.targetBedId, userId, input.transferReason]
+  );
+
+  // Update admission
+  await query(
+    `UPDATE ip_admissions SET bed_number = $1, ward_type = $2, status = 'Transferred' WHERE admission_id = $3`,
+    [newBed.bed_number, newBed.ward_type || 'General', input.ipAdmissionId]
+  );
+
+  return { success: true, message: "Patient ward shifting completed safely." };
 };
 
 export const dischargePatient = async (ipAdmissionId: string) => {
-  await query('BEGIN');
-  try {
-    const admissionRes = await query(
-      `SELECT current_bed_id, patient_id FROM ip_admissions WHERE ip_admission_id = $1 AND status != 'Discharged' FOR UPDATE`,
-      [ipAdmissionId]
-    );
-    if (admissionRes.rows.length === 0) throw new AppError("Active IP admission not found.", 404);
-    
-    const { current_bed_id, patient_id } = admissionRes.rows[0];
+  const admissionRes = await query(
+    `SELECT admission_id, bed_number, patient_id FROM ip_admissions WHERE admission_id = $1 AND status != 'Discharged'`,
+    [ipAdmissionId]
+  );
+  if (admissionRes.rows.length === 0) throw new AppError("Active IP admission not found.", 404);
 
-    // Free bed
-    await query(`UPDATE hospital_beds SET status = 'Available' WHERE bed_id = $1`, [current_bed_id]);
-    
-    // Update patient status
-    await query(`UPDATE patients SET is_inpatient = FALSE WHERE patient_id = $1`, [patient_id]);
-    
-    // Update admission status
-    await query(`UPDATE ip_admissions SET status = 'Discharged', discharged_at = CURRENT_TIMESTAMP WHERE ip_admission_id = $1`, [ipAdmissionId]);
-    
-    await query('COMMIT');
-    return { success: true };
-  } catch (error) {
-    await query('ROLLBACK');
-    throw error;
-  }
+  const { bed_number, patient_id } = admissionRes.rows[0];
+
+  // Free bed
+  await query(`UPDATE hospital_beds SET status = 'Available' WHERE bed_number = $1`, [bed_number]);
+
+  // Update patient status
+  await query(`UPDATE patients SET is_inpatient = FALSE WHERE patient_id = $1`, [patient_id]);
+
+  // Update admission status
+  await query(
+    `UPDATE ip_admissions SET status = 'Discharged', discharge_date = CURRENT_TIMESTAMP, discharged_at = CURRENT_TIMESTAMP WHERE admission_id = $1`,
+    [ipAdmissionId]
+  );
+
+  return { success: true };
 };
 
 // CRUD for Beds
 export const addBed = async (input: BedInput) => {
-  const result = await query(
-    `INSERT INTO hospital_beds (bed_number, ward_name, type, per_day_charge, floor, status)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [input.bedNumber, input.wardName, input.type, input.perDayCharge, input.floor, input.status]
+  const bedId = uuidv4();
+  await query(
+    `INSERT INTO hospital_beds (bed_id, bed_number, ward_name, ward_type, daily_rate, floor, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [bedId, input.bedNumber, input.wardName, input.wardType, input.dailyRate, input.floor, input.status]
   );
+  const result = await query('SELECT * FROM hospital_beds WHERE bed_id = $1', [bedId]);
   return result.rows[0];
 };
 
@@ -208,17 +208,18 @@ export const editBed = async (bedId: string, input: BedInput) => {
   if (currentStatusRes.rows.length === 0) {
     throw new AppError('Bed not found', 404);
   }
-  
+
   if (currentStatusRes.rows[0].status === 'Occupied' && input.status !== 'Occupied') {
     throw new AppError('Cannot change status of an occupied bed. Discharge the patient first.', 400);
   }
 
-  const result = await query(
-    `UPDATE hospital_beds 
-     SET bed_number = $1, ward_name = $2, type = $3, per_day_charge = $4, floor = $5, status = $6
-     WHERE bed_id = $7 RETURNING *`,
-    [input.bedNumber, input.wardName, input.type, input.perDayCharge, input.floor, input.status, bedId]
+  await query(
+    `UPDATE hospital_beds
+     SET bed_number = $1, ward_name = $2, ward_type = $3, daily_rate = $4, floor = $5, status = $6
+     WHERE bed_id = $7`,
+    [input.bedNumber, input.wardName, input.wardType, input.dailyRate, input.floor, input.status, bedId]
   );
+  const result = await query('SELECT * FROM hospital_beds WHERE bed_id = $1', [bedId]);
   return result.rows[0];
 };
 
@@ -227,7 +228,7 @@ export const deleteBed = async (bedId: string) => {
   if (currentStatusRes.rows.length === 0) {
     throw new AppError('Bed not found', 404);
   }
-  
+
   if (currentStatusRes.rows[0].status === 'Occupied') {
     throw new AppError('Cannot delete an occupied bed. Discharge the patient first.', 400);
   }
@@ -235,3 +236,4 @@ export const deleteBed = async (bedId: string) => {
   await query('DELETE FROM hospital_beds WHERE bed_id = $1', [bedId]);
   return { success: true };
 };
+

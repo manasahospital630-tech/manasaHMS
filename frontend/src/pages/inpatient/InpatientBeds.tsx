@@ -30,9 +30,9 @@ export const InpatientBeds: React.FC = () => {
   const [bedForm, setBedForm] = useState({
     bedNumber: '',
     wardName: '',
-    type: 'General_Ward',
-    floor: '1st Floor',
-    perDayCharge: '2000',
+    wardType: 'General',
+    floor: '1',
+    dailyRate: '2000',
     status: 'Available'
   });
 
@@ -111,9 +111,9 @@ export const InpatientBeds: React.FC = () => {
     setBedForm({
       bedNumber: '',
       wardName: '',
-      type: 'General_Ward',
-      floor: activeFloor !== 'All Floors' ? activeFloor : '1st Floor',
-      perDayCharge: '2000',
+      wardType: 'General',
+      floor: activeFloor !== 'All Floors' ? activeFloor : '1',
+      dailyRate: '2000',
       status: 'Available'
     });
     setModalError('');
@@ -126,9 +126,9 @@ export const InpatientBeds: React.FC = () => {
     setBedForm({
       bedNumber: bed.bed_number,
       wardName: bed.ward_name,
-      type: bed.type,
-      floor: bed.floor || '1st Floor',
-      perDayCharge: bed.per_day_charge ? parseFloat(bed.per_day_charge).toString() : '2000',
+      wardType: bed.ward_type || 'General',
+      floor: bed.floor ? bed.floor.toString() : '1',
+      dailyRate: bed.daily_rate ? parseFloat(bed.daily_rate).toString() : '2000',
       status: bed.status
     });
     setModalError('');
@@ -157,9 +157,9 @@ export const InpatientBeds: React.FC = () => {
     const payload = {
       bedNumber: bedForm.bedNumber,
       wardName: bedForm.wardName,
-      type: bedForm.type,
-      floor: bedForm.floor,
-      perDayCharge: parseFloat(bedForm.perDayCharge),
+      wardType: bedForm.wardType,
+      floor: parseInt(bedForm.floor) || 1,
+      dailyRate: parseFloat(bedForm.dailyRate),
       status: bedForm.status
     };
 
@@ -520,12 +520,12 @@ export const InpatientBeds: React.FC = () => {
                     <label style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>Ward Type *</label>
                     <select 
                       className="select"
-                      value={bedForm.type}
-                      onChange={(e) => setBedForm({ ...bedForm, type: e.target.value })}
+                      value={bedForm.wardType}
+                      onChange={(e) => setBedForm({ ...bedForm, wardType: e.target.value })}
                       required
                       style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                     >
-                      <option value="General_Ward">General Ward</option>
+                      <option value="General">General Ward</option>
                       <option value="ICU">ICU</option>
                       <option value="Emergency">Emergency</option>
                       <option value="Semi_Private">Semi-Private</option>
@@ -534,12 +534,12 @@ export const InpatientBeds: React.FC = () => {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>Per Day Charge (Rs.) *</label>
+                    <label style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>Daily Rate (Rs.) *</label>
                     <input 
                       type="number" 
                       className="input"
-                      value={bedForm.perDayCharge}
-                      onChange={(e) => setBedForm({ ...bedForm, perDayCharge: e.target.value })}
+                      value={bedForm.dailyRate}
+                      onChange={(e) => setBedForm({ ...bedForm, dailyRate: e.target.value })}
                       min="1"
                       required
                       style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}

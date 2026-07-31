@@ -27,9 +27,9 @@ exports.transferBedSchema = zod_1.z.object({
 exports.bedSchema = zod_1.z.object({
     bedNumber: zod_1.z.string().min(1),
     wardName: zod_1.z.string().min(1),
-    type: zod_1.z.enum(['Emergency', 'ICU', 'General_Ward', 'Semi_Private', 'Private_Suite']),
+    wardType: zod_1.z.enum(['Emergency', 'ICU', 'General', 'Semi_Private', 'Private_Suite']).default('General'),
     status: zod_1.z.enum(['Available', 'Occupied', 'Maintenance']).default('Available'),
-    perDayCharge: zod_1.z.number().positive(),
-    floor: zod_1.z.string().min(1).default('1st Floor')
+    dailyRate: zod_1.z.number().positive().default(1500),
+    floor: zod_1.z.coerce.number().int().min(0).default(1)
 });
 //# sourceMappingURL=ip.schema.js.map
