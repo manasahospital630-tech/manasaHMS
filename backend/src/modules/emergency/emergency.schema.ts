@@ -18,12 +18,12 @@ export const admitEmergencyPatientSchema = z.object({
     policeOfficerName: z.string().optional()
   }).optional(),
   triagePriority: z.enum(['RED', 'ORANGE', 'YELLOW', 'GREEN']).default('RED'),
-  currentBedId: z.string().uuid().optional().nullable(),
-  admittingDoctorId: z.string().uuid()
+  currentBedId: z.string().optional().nullable(),
+  admittingDoctorId: z.string().min(1)
 });
 
 export const logVitalsSchema = z.object({
-  emergencyId: z.string().uuid(),
+  emergencyId: z.string().min(1),
   bpSys: z.number().int().optional().nullable(),
   bpDia: z.number().int().optional().nullable(),
   pulse: z.number().int().optional().nullable(),
@@ -33,7 +33,7 @@ export const logVitalsSchema = z.object({
 });
 
 export const saveConsentSchema = z.object({
-  emergencyId: z.string().uuid(),
+  emergencyId: z.string().min(1),
   consentType: z.enum(['HIGH_RISK', 'POLICE_INTIMATION', 'BROUGHT_BY_WITNESS', 'SELF_HARM_DECLARATION', 'LAMA']),
   signatoryName: z.string().min(1),
   relation: z.string().optional().nullable(),
@@ -41,13 +41,13 @@ export const saveConsentSchema = z.object({
 });
 
 export const createEmergencyOrderSchema = z.object({
-  emergencyId: z.string().uuid(),
+  emergencyId: z.string().min(1),
   orderType: z.enum(['MEDICATION', 'IV_FLUIDS', 'BLOOD_BANK', 'RADIOLOGY']),
   details: z.string().min(1)
 });
 
 export const updateEmergencyStatusSchema = z.object({
-  emergencyId: z.string().uuid(),
+  emergencyId: z.string().min(1),
   status: z.enum(['IN_ER_CARE', 'IP_TRANSFERRED', 'DISCHARGED', 'MORTUARY']),
-  currentBedId: z.string().uuid().optional().nullable()
+  currentBedId: z.string().optional().nullable()
 });

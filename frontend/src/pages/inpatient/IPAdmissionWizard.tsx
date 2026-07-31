@@ -57,7 +57,7 @@ export const IPAdmissionWizard: React.FC = () => {
     const handleFormSubmission = async (values: any) => {
         try {
             const user = JSON.parse(localStorage.getItem('hms_user') || '{}');
-            const doctorId = user.user_id || '00000000-0000-0000-0000-000000000000'; // Fallback
+            const doctorId = user.user_id || user.userId || user.id || 'u-doc-01';
             
             const payload = {
                 admissionType: values.admissionType,

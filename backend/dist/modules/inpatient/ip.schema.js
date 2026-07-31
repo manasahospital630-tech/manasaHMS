@@ -3,10 +3,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.bedSchema = exports.transferBedSchema = exports.emergencyFastTrackSchema = exports.routineAdmissionSchema = void 0;
 const zod_1 = require("zod");
 exports.routineAdmissionSchema = zod_1.z.object({
-    patientId: zod_1.z.string().uuid(),
+    patientId: zod_1.z.string().min(1),
     admissionType: zod_1.z.enum(['Routine_IP', 'Emergency']),
-    admittingDoctorId: zod_1.z.string().uuid(),
-    targetBedId: zod_1.z.string().uuid(),
+    admittingDoctorId: zod_1.z.string().min(1),
+    targetBedId: zod_1.z.string().min(1),
     reasonForAdmission: zod_1.z.string().min(5)
 });
 exports.emergencyFastTrackSchema = zod_1.z.object({
@@ -14,14 +14,14 @@ exports.emergencyFastTrackSchema = zod_1.z.object({
     lastName: zod_1.z.string().min(1),
     emergencyContact: zod_1.z.string().optional(),
     admissionType: zod_1.z.enum(['Emergency']),
-    admittingDoctorId: zod_1.z.string().uuid(),
-    targetBedId: zod_1.z.string().uuid(),
+    admittingDoctorId: zod_1.z.string().min(1),
+    targetBedId: zod_1.z.string().min(1),
     reasonForAdmission: zod_1.z.string().min(5),
     chiefComplaint: zod_1.z.string().min(5)
 });
 exports.transferBedSchema = zod_1.z.object({
-    ipAdmissionId: zod_1.z.string().uuid(),
-    targetBedId: zod_1.z.string().uuid(),
+    ipAdmissionId: zod_1.z.string().min(1),
+    targetBedId: zod_1.z.string().min(1),
     transferReason: zod_1.z.string().min(5)
 });
 exports.bedSchema = zod_1.z.object({

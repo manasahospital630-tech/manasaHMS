@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
 export const routineAdmissionSchema = z.object({
-  patientId: z.string().uuid(),
+  patientId: z.string().min(1),
   admissionType: z.enum(['Routine_IP', 'Emergency']),
-  admittingDoctorId: z.string().uuid(),
-  targetBedId: z.string().uuid(),
+  admittingDoctorId: z.string().min(1),
+  targetBedId: z.string().min(1),
   reasonForAdmission: z.string().min(5)
 });
 
@@ -13,15 +13,15 @@ export const emergencyFastTrackSchema = z.object({
   lastName: z.string().min(1),
   emergencyContact: z.string().optional(),
   admissionType: z.enum(['Emergency']),
-  admittingDoctorId: z.string().uuid(),
-  targetBedId: z.string().uuid(),
+  admittingDoctorId: z.string().min(1),
+  targetBedId: z.string().min(1),
   reasonForAdmission: z.string().min(5),
   chiefComplaint: z.string().min(5)
 });
 
 export const transferBedSchema = z.object({
-  ipAdmissionId: z.string().uuid(),
-  targetBedId: z.string().uuid(),
+  ipAdmissionId: z.string().min(1),
+  targetBedId: z.string().min(1),
   transferReason: z.string().min(5)
 });
 
@@ -38,4 +38,5 @@ export type RoutineAdmissionInput = z.infer<typeof routineAdmissionSchema>;
 export type EmergencyFastTrackInput = z.infer<typeof emergencyFastTrackSchema>;
 export type TransferBedInput = z.infer<typeof transferBedSchema>;
 export type BedInput = z.infer<typeof bedSchema>;
+
 

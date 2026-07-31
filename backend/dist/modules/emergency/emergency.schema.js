@@ -20,11 +20,11 @@ exports.admitEmergencyPatientSchema = zod_1.z.object({
         policeOfficerName: zod_1.z.string().optional()
     }).optional(),
     triagePriority: zod_1.z.enum(['RED', 'ORANGE', 'YELLOW', 'GREEN']).default('RED'),
-    currentBedId: zod_1.z.string().uuid().optional().nullable(),
-    admittingDoctorId: zod_1.z.string().uuid()
+    currentBedId: zod_1.z.string().optional().nullable(),
+    admittingDoctorId: zod_1.z.string().min(1)
 });
 exports.logVitalsSchema = zod_1.z.object({
-    emergencyId: zod_1.z.string().uuid(),
+    emergencyId: zod_1.z.string().min(1),
     bpSys: zod_1.z.number().int().optional().nullable(),
     bpDia: zod_1.z.number().int().optional().nullable(),
     pulse: zod_1.z.number().int().optional().nullable(),
@@ -33,20 +33,20 @@ exports.logVitalsSchema = zod_1.z.object({
     gcsScore: zod_1.z.number().int().min(3).max(15).optional().nullable()
 });
 exports.saveConsentSchema = zod_1.z.object({
-    emergencyId: zod_1.z.string().uuid(),
+    emergencyId: zod_1.z.string().min(1),
     consentType: zod_1.z.enum(['HIGH_RISK', 'POLICE_INTIMATION', 'BROUGHT_BY_WITNESS', 'SELF_HARM_DECLARATION', 'LAMA']),
     signatoryName: zod_1.z.string().min(1),
     relation: zod_1.z.string().optional().nullable(),
     signatureDataUrl: zod_1.z.string().min(10)
 });
 exports.createEmergencyOrderSchema = zod_1.z.object({
-    emergencyId: zod_1.z.string().uuid(),
+    emergencyId: zod_1.z.string().min(1),
     orderType: zod_1.z.enum(['MEDICATION', 'IV_FLUIDS', 'BLOOD_BANK', 'RADIOLOGY']),
     details: zod_1.z.string().min(1)
 });
 exports.updateEmergencyStatusSchema = zod_1.z.object({
-    emergencyId: zod_1.z.string().uuid(),
+    emergencyId: zod_1.z.string().min(1),
     status: zod_1.z.enum(['IN_ER_CARE', 'IP_TRANSFERRED', 'DISCHARGED', 'MORTUARY']),
-    currentBedId: zod_1.z.string().uuid().optional().nullable()
+    currentBedId: zod_1.z.string().optional().nullable()
 });
 //# sourceMappingURL=emergency.schema.js.map
