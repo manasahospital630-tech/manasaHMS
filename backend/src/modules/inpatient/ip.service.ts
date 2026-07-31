@@ -34,7 +34,11 @@ export const admitRoutine = async (input: RoutineAdmissionInput) => {
   const admissionNumber = `IP-${Date.now().toString(36).toUpperCase()}`;
 
   // Set patient to inpatient
-  await query('UPDATE patients SET is_inpatient = TRUE WHERE patient_id = $1', [input.patientId]);
+  try {
+    await query('UPDATE patients SET is_inpatient = TRUE WHERE patient_id = $1', [input.patientId]);
+  } catch (pErr) {
+    console.warn('Failed to update patient is_inpatient flag:', pErr);
+  }
 
   // Mark bed occupied
   await query("UPDATE hospital_beds SET status = 'Occupied' WHERE bed_id = $1", [input.targetBedId]);

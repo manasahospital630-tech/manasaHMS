@@ -33,7 +33,12 @@ const admitRoutine = async (input) => {
     const admissionId = (0, uuid_1.v4)();
     const admissionNumber = `IP-${Date.now().toString(36).toUpperCase()}`;
     // Set patient to inpatient
-    await (0, database_1.query)('UPDATE patients SET is_inpatient = TRUE WHERE patient_id = $1', [input.patientId]);
+    try {
+        await (0, database_1.query)('UPDATE patients SET is_inpatient = TRUE WHERE patient_id = $1', [input.patientId]);
+    }
+    catch (pErr) {
+        console.warn('Failed to update patient is_inpatient flag:', pErr);
+    }
     // Mark bed occupied
     await (0, database_1.query)("UPDATE hospital_beds SET status = 'Occupied' WHERE bed_id = $1", [input.targetBedId]);
     // Create admission using actual ip_admissions columns
