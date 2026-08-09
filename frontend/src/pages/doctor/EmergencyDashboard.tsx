@@ -69,15 +69,21 @@ export const EmergencyDashboard: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [patRes, bedRes] = await Promise.all([
-        api.get('/v1/emergency/active-patients'),
-        api.get('/inpatient/beds')
-      ]);
-      setPatients(patRes.data.data || []);
-      // Filter for available emergency beds or general beds
-      setBeds(bedRes.data.data || []);
+      const bedRes = await api.get('/inpatient/beds');
+      if (bedRes.data && bedRes.data.data) {
+        setBeds(bedRes.data.data);
+      }
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load beds:', err);
+    }
+
+    try {
+      const patRes = await api.get('/v1/emergency/active-patients');
+      if (patRes.data && patRes.data.data) {
+        setPatients(patRes.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to load active emergency patients:', err);
     } finally {
       setLoading(false);
     }
