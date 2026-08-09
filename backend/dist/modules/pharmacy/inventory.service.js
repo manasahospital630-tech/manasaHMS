@@ -132,7 +132,7 @@ const createSale = async (pharmacistId, input) => {
         let totalDiscount = 0;
         const itemDetails = [];
         for (const item of items) {
-            const itemRes = await (0, database_1.query)('SELECT item_id, item_name, stock_quantity, unit_price, is_sheet, tablets_per_sheet, hsn_code, batch_no, expiry_date, generic_name FROM inventory_items WHERE item_id = $1', [item.itemId]);
+            const itemRes = await (0, database_1.query)('SELECT * FROM inventory_items WHERE item_id = $1', [item.itemId]);
             if (itemRes.rows.length === 0) {
                 throw new errorHandler_1.AppError(`Item with ID ${item.itemId} not found.`, 404);
             }

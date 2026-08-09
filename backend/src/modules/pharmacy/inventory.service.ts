@@ -152,7 +152,7 @@ export const createSale = async (pharmacistId: string, input: CreateSaleInput) =
 
     for (const item of items) {
       const itemRes = await query(
-        'SELECT item_id, item_name, stock_quantity, unit_price, is_sheet, tablets_per_sheet, hsn_code, batch_no, expiry_date, generic_name FROM inventory_items WHERE item_id = $1',
+        'SELECT * FROM inventory_items WHERE item_id = $1',
         [item.itemId]
       );
       if (itemRes.rows.length === 0) {
