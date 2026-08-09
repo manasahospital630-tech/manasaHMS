@@ -213,10 +213,6 @@ export const editBed = async (bedId: string, input: BedInput) => {
     throw new AppError('Bed not found', 404);
   }
 
-  if (currentStatusRes.rows[0].status === 'Occupied' && input.status !== 'Occupied') {
-    throw new AppError('Cannot change status of an occupied bed. Discharge the patient first.', 400);
-  }
-
   await query(
     `UPDATE hospital_beds
      SET bed_number = $1, ward_name = $2, ward_type = $3, daily_rate = $4, floor = $5, status = $6

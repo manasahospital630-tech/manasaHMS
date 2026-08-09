@@ -553,13 +553,12 @@ export const InpatientBeds: React.FC = () => {
                     className="select"
                     value={bedForm.status}
                     onChange={(e) => setBedForm({ ...bedForm, status: e.target.value })}
-                    disabled={editingBed?.status === 'Occupied'}
                     required
                     style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                   >
                     <option value="Available">Available</option>
+                    <option value="Occupied">Occupied</option>
                     <option value="Maintenance">Maintenance</option>
-                    {editingBed?.status === 'Occupied' && <option value="Occupied">Occupied</option>}
                   </select>
                 </div>
 
