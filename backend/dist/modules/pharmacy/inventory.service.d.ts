@@ -44,6 +44,40 @@ export declare const getSalesHistory: () => Promise<{
                     count: number;
                     amount: number;
                 };
+                'IP Ledger': {
+                    count: number;
+                    amount: number;
+                };
+            };
+        };
+        yesterday: {
+            count: number;
+            amount: number;
+            byMethod: {
+                UPI: {
+                    count: number;
+                    amount: number;
+                };
+                Card: {
+                    count: number;
+                    amount: number;
+                };
+                Cash: {
+                    count: number;
+                    amount: number;
+                };
+                Insurance: {
+                    count: number;
+                    amount: number;
+                };
+                'Bank Transfer': {
+                    count: number;
+                    amount: number;
+                };
+                'IP Ledger': {
+                    count: number;
+                    amount: number;
+                };
             };
         };
         week: {
@@ -70,6 +104,40 @@ export declare const getSalesHistory: () => Promise<{
                     count: number;
                     amount: number;
                 };
+                'IP Ledger': {
+                    count: number;
+                    amount: number;
+                };
+            };
+        };
+        lastWeek: {
+            count: number;
+            amount: number;
+            byMethod: {
+                UPI: {
+                    count: number;
+                    amount: number;
+                };
+                Card: {
+                    count: number;
+                    amount: number;
+                };
+                Cash: {
+                    count: number;
+                    amount: number;
+                };
+                Insurance: {
+                    count: number;
+                    amount: number;
+                };
+                'Bank Transfer': {
+                    count: number;
+                    amount: number;
+                };
+                'IP Ledger': {
+                    count: number;
+                    amount: number;
+                };
             };
         };
         month: {
@@ -93,6 +161,70 @@ export declare const getSalesHistory: () => Promise<{
                     amount: number;
                 };
                 'Bank Transfer': {
+                    count: number;
+                    amount: number;
+                };
+                'IP Ledger': {
+                    count: number;
+                    amount: number;
+                };
+            };
+        };
+        lastMonth: {
+            count: number;
+            amount: number;
+            byMethod: {
+                UPI: {
+                    count: number;
+                    amount: number;
+                };
+                Card: {
+                    count: number;
+                    amount: number;
+                };
+                Cash: {
+                    count: number;
+                    amount: number;
+                };
+                Insurance: {
+                    count: number;
+                    amount: number;
+                };
+                'Bank Transfer': {
+                    count: number;
+                    amount: number;
+                };
+                'IP Ledger': {
+                    count: number;
+                    amount: number;
+                };
+            };
+        };
+        year: {
+            count: number;
+            amount: number;
+            byMethod: {
+                UPI: {
+                    count: number;
+                    amount: number;
+                };
+                Card: {
+                    count: number;
+                    amount: number;
+                };
+                Cash: {
+                    count: number;
+                    amount: number;
+                };
+                Insurance: {
+                    count: number;
+                    amount: number;
+                };
+                'Bank Transfer': {
+                    count: number;
+                    amount: number;
+                };
+                'IP Ledger': {
                     count: number;
                     amount: number;
                 };

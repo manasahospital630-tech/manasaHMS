@@ -36,13 +36,18 @@ interface StatsGroup {
     Cash: { count: number; amount: number };
     Insurance: { count: number; amount: number };
     'Bank Transfer': { count: number; amount: number };
+    'IP Ledger'?: { count: number; amount: number };
   };
 }
 
 interface DashboardStats {
   day: StatsGroup;
+  yesterday: StatsGroup;
   week: StatsGroup;
+  lastWeek: StatsGroup;
   month: StatsGroup;
+  lastMonth: StatsGroup;
+  year: StatsGroup;
 }
 
 const numberToWords = (num: number): string => {
@@ -97,7 +102,8 @@ const emptyMethodStats = {
   Card: { count: 0, amount: 0 },
   Cash: { count: 0, amount: 0 },
   Insurance: { count: 0, amount: 0 },
-  'Bank Transfer': { count: 0, amount: 0 }
+  'Bank Transfer': { count: 0, amount: 0 },
+  'IP Ledger': { count: 0, amount: 0 }
 };
 const emptyStatsGroup = { count: 0, amount: 0, byMethod: emptyMethodStats };
 
@@ -105,8 +111,12 @@ const SalesHistory: React.FC = () => {
   const [sales, setSales] = useState<SaleInvoice[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     day: emptyStatsGroup,
+    yesterday: emptyStatsGroup,
     week: emptyStatsGroup,
-    month: emptyStatsGroup
+    lastWeek: emptyStatsGroup,
+    month: emptyStatsGroup,
+    lastMonth: emptyStatsGroup,
+    year: emptyStatsGroup
   });
   const [loading, setLoading] = useState(false);
   const [hospitalDetails, setHospitalDetails] = useState<any>(null);
@@ -114,6 +124,8 @@ const SalesHistory: React.FC = () => {
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('All');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('All');
 
   const fetchSalesData = async () => {
@@ -124,8 +136,12 @@ const SalesHistory: React.FC = () => {
         setSales(res.data.data.sales || []);
         setStats(res.data.data.stats || {
           day: emptyStatsGroup,
+          yesterday: emptyStatsGroup,
           week: emptyStatsGroup,
-          month: emptyStatsGroup
+          lastWeek: emptyStatsGroup,
+          month: emptyStatsGroup,
+          lastMonth: emptyStatsGroup,
+          year: emptyStatsGroup
         });
       }
     } catch (err) {
@@ -603,13 +619,42 @@ const SalesHistory: React.FC = () => {
     if (dateFilter !== 'All') {
       const saleDate = new Date(sale.created_at);
       const now = new Date();
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-      if (dateFilter === 'Today' && saleDate < startOfDay) return false;
+      const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+      const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+
+      const dayOfWeek = now.getDay();
+      const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek, 0, 0, 0, 0);
+      const startOfLastWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() - 7, 0, 0, 0, 0);
+      const endOfLastWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() - 1, 23, 59, 59, 999);
+
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+
+      const startOfYear = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+
+      if (dateFilter === 'Today' && (saleDate < startOfDay || saleDate > endOfDay)) return false;
+      if (dateFilter === 'Yesterday' && (saleDate < startOfYesterday || saleDate > endOfYesterday)) return false;
       if (dateFilter === 'Week' && saleDate < startOfWeek) return false;
+      if (dateFilter === 'LastWeek' && (saleDate < startOfLastWeek || saleDate > endOfLastWeek)) return false;
       if (dateFilter === 'Month' && saleDate < startOfMonth) return false;
+      if (dateFilter === 'LastMonth' && (saleDate < startOfLastMonth || saleDate > endOfLastMonth)) return false;
+      if (dateFilter === 'Year' && saleDate < startOfYear) return false;
+      if (dateFilter === 'Custom') {
+        if (customStartDate) {
+          const start = new Date(customStartDate);
+          start.setHours(0, 0, 0, 0);
+          if (saleDate < start) return false;
+        }
+        if (customEndDate) {
+          const end = new Date(customEndDate);
+          end.setHours(23, 59, 59, 999);
+          if (saleDate > end) return false;
+        }
+      }
     }
 
     // 3. Payment Filter
@@ -620,115 +665,121 @@ const SalesHistory: React.FC = () => {
     return true;
   });
 
+  const renderStatsBreakdown = (group: StatsGroup) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+        <span>📱 UPI ({group.byMethod?.UPI?.count || 0})</span>
+        <strong>{formatCurrency(group.byMethod?.UPI?.amount || 0)}</strong>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+        <span>💳 Card ({group.byMethod?.Card?.count || 0})</span>
+        <strong>{formatCurrency(group.byMethod?.Card?.amount || 0)}</strong>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+        <span>💵 Cash ({group.byMethod?.Cash?.count || 0})</span>
+        <strong>{formatCurrency(group.byMethod?.Cash?.amount || 0)}</strong>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+        <span>🏥 Insurance ({group.byMethod?.Insurance?.count || 0})</span>
+        <strong>{formatCurrency(group.byMethod?.Insurance?.amount || 0)}</strong>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+        <span>🏦 Bank Transfer ({group.byMethod?.['Bank Transfer']?.count || 0})</span>
+        <strong>{formatCurrency(group.byMethod?.['Bank Transfer']?.amount || 0)}</strong>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+        <span>🏥 IP Ledger ({group.byMethod?.['IP Ledger']?.count || 0})</span>
+        <strong>{formatCurrency(group.byMethod?.['IP Ledger']?.amount || 0)}</strong>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <div className="page-header">
         <h1>
           <ShoppingCart size={28} style={{ verticalAlign: 'middle', marginRight: 8 }} />
-          Pharmacy Sales History
+          Pharmacy Sales History & Analytics Console
         </h1>
         <Button variant="secondary" icon={<RefreshCw size={16} />} onClick={fetchSalesData} loading={loading}>
           Refresh
         </Button>
       </div>
 
-      {/* Mini Dashboard */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)' }}>
+      {/* Sales Dashboard Cards Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)' }}>
         <Card title="Today's Sales" style={{ background: 'linear-gradient(135deg, rgba(22,101,52,0.15) 0%, rgba(255,255,255,0.02) 100%)', border: '1px solid rgba(22,101,52,0.3)' }}>
-          <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--accent-success)', margin: '8px 0 4px 0' }}>
-            {formatCurrency(stats.day.amount)}
+          <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--accent-success)', margin: '6px 0 4px 0' }}>
+            {formatCurrency(stats.day?.amount || 0)}
           </div>
-          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-            Total Invoices: <strong>{stats.day.count}</strong>
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            Total Invoices: <strong>{stats.day?.count || 0}</strong>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>📱 UPI ({stats.day.byMethod?.UPI?.count || 0})</span>
-              <strong>{formatCurrency(stats.day.byMethod?.UPI?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>💳 Card ({stats.day.byMethod?.Card?.count || 0})</span>
-              <strong>{formatCurrency(stats.day.byMethod?.Card?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>💵 Cash ({stats.day.byMethod?.Cash?.count || 0})</span>
-              <strong>{formatCurrency(stats.day.byMethod?.Cash?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>🏥 Insurance ({stats.day.byMethod?.Insurance?.count || 0})</span>
-              <strong>{formatCurrency(stats.day.byMethod?.Insurance?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>🏦 Bank Transfer ({stats.day.byMethod?.['Bank Transfer']?.count || 0})</span>
-              <strong>{formatCurrency(stats.day.byMethod?.['Bank Transfer']?.amount || 0)}</strong>
-            </div>
-          </div>
+          {renderStatsBreakdown(stats.day || emptyStatsGroup)}
         </Card>
 
-        <Card title="Weekly Sales" style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.1) 0%, rgba(255,255,255,0.02) 100%)', border: '1px solid rgba(14,165,233,0.2)' }}>
-          <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--accent-info)', margin: '8px 0 4px 0' }}>
-            {formatCurrency(stats.week.amount)}
+        <Card title="Yesterday's Sales" style={{ background: 'linear-gradient(135deg, rgba(100,116,139,0.15) 0%, rgba(255,255,255,0.02) 100%)', border: '1px solid rgba(100,116,139,0.3)' }}>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)', margin: '6px 0 4px 0' }}>
+            {formatCurrency(stats.yesterday?.amount || 0)}
           </div>
-          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-            Total Invoices: <strong>{stats.week.count}</strong>
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            Total Invoices: <strong>{stats.yesterday?.count || 0}</strong>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>📱 UPI ({stats.week.byMethod?.UPI?.count || 0})</span>
-              <strong>{formatCurrency(stats.week.byMethod?.UPI?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>💳 Card ({stats.week.byMethod?.Card?.count || 0})</span>
-              <strong>{formatCurrency(stats.week.byMethod?.Card?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>💵 Cash ({stats.week.byMethod?.Cash?.count || 0})</span>
-              <strong>{formatCurrency(stats.week.byMethod?.Cash?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>🏥 Insurance ({stats.week.byMethod?.Insurance?.count || 0})</span>
-              <strong>{formatCurrency(stats.week.byMethod?.Insurance?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>🏦 Bank Transfer ({stats.week.byMethod?.['Bank Transfer']?.count || 0})</span>
-              <strong>{formatCurrency(stats.week.byMethod?.['Bank Transfer']?.amount || 0)}</strong>
-            </div>
-          </div>
+          {renderStatsBreakdown(stats.yesterday || emptyStatsGroup)}
         </Card>
 
-        <Card title="Monthly Sales" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.1) 0%, rgba(255,255,255,0.02) 100%)', border: '1px solid rgba(168,85,247,0.2)' }}>
-          <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--accent-warning)', margin: '8px 0 4px 0' }}>
-            {formatCurrency(stats.month.amount)}
+        <Card title="This Week Sales" style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.12) 0%, rgba(255,255,255,0.02) 100%)', border: '1px solid rgba(14,165,233,0.25)' }}>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--accent-info)', margin: '6px 0 4px 0' }}>
+            {formatCurrency(stats.week?.amount || 0)}
           </div>
-          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-            Total Invoices: <strong>{stats.month.count}</strong>
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            Total Invoices: <strong>{stats.week?.count || 0}</strong>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>📱 UPI ({stats.month.byMethod?.UPI?.count || 0})</span>
-              <strong>{formatCurrency(stats.month.byMethod?.UPI?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>💳 Card ({stats.month.byMethod?.Card?.count || 0})</span>
-              <strong>{formatCurrency(stats.month.byMethod?.Card?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>💵 Cash ({stats.month.byMethod?.Cash?.count || 0})</span>
-              <strong>{formatCurrency(stats.month.byMethod?.Cash?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>🏥 Insurance ({stats.month.byMethod?.Insurance?.count || 0})</span>
-              <strong>{formatCurrency(stats.month.byMethod?.Insurance?.amount || 0)}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-              <span>🏦 Bank Transfer ({stats.month.byMethod?.['Bank Transfer']?.count || 0})</span>
-              <strong>{formatCurrency(stats.month.byMethod?.['Bank Transfer']?.amount || 0)}</strong>
-            </div>
+          {renderStatsBreakdown(stats.week || emptyStatsGroup)}
+        </Card>
+
+        <Card title="Last Week Sales" style={{ background: 'linear-gradient(135deg, rgba(79,70,229,0.12) 0%, rgba(255,255,255,0.02) 100%)', border: '1px solid rgba(79,70,229,0.25)' }}>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: '#818cf8', margin: '6px 0 4px 0' }}>
+            {formatCurrency(stats.lastWeek?.amount || 0)}
           </div>
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            Total Invoices: <strong>{stats.lastWeek?.count || 0}</strong>
+          </div>
+          {renderStatsBreakdown(stats.lastWeek || emptyStatsGroup)}
+        </Card>
+
+        <Card title="This Month Sales" style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.12) 0%, rgba(255,255,255,0.02) 100%)', border: '1px solid rgba(168,85,247,0.25)' }}>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--accent-warning)', margin: '6px 0 4px 0' }}>
+            {formatCurrency(stats.month?.amount || 0)}
+          </div>
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            Total Invoices: <strong>{stats.month?.count || 0}</strong>
+          </div>
+          {renderStatsBreakdown(stats.month || emptyStatsGroup)}
+        </Card>
+
+        <Card title="Last Month Sales" style={{ background: 'linear-gradient(135deg, rgba(236,72,153,0.12) 0%, rgba(255,255,255,0.02) 100%)', border: '1px solid rgba(236,72,153,0.25)' }}>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: '#f472b6', margin: '6px 0 4px 0' }}>
+            {formatCurrency(stats.lastMonth?.amount || 0)}
+          </div>
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            Total Invoices: <strong>{stats.lastMonth?.count || 0}</strong>
+          </div>
+          {renderStatsBreakdown(stats.lastMonth || emptyStatsGroup)}
+        </Card>
+
+        <Card title="Total Year Sales" style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(255,255,255,0.02) 100%)', border: '1px solid rgba(245,158,11,0.3)' }}>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: '#fbbf24', margin: '6px 0 4px 0' }}>
+            {formatCurrency(stats.year?.amount || 0)}
+          </div>
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            Total Invoices: <strong>{stats.year?.count || 0}</strong>
+          </div>
+          {renderStatsBreakdown(stats.year || emptyStatsGroup)}
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Filters & Search */}
       <Card title="Filters & Search" style={{ marginBottom: 'var(--space-md)' }}>
         <div style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ flex: 2, minWidth: 260 }}>
@@ -757,11 +808,48 @@ const SalesHistory: React.FC = () => {
               options={[
                 { value: 'All', label: '🗓️ All Sales' },
                 { value: 'Today', label: '📅 Today' },
+                { value: 'Yesterday', label: '⏮️ Yesterday' },
                 { value: 'Week', label: '🗓️ This Week' },
-                { value: 'Month', label: '🗓️ This Month' }
+                { value: 'LastWeek', label: '⏮️ Last Week' },
+                { value: 'Month', label: '🗓️ This Month' },
+                { value: 'LastMonth', label: '⏮️ Last Month' },
+                { value: 'Year', label: '📅 Total Year (This Year)' },
+                { value: 'Custom', label: '📆 Custom Dates' }
               ]}
             />
           </div>
+
+          {dateFilter === 'Custom' && (
+            <>
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--font-sm)', marginBottom: 6, color: 'var(--text-secondary)' }}>From Date</label>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  style={{
+                    padding: '9px 12px', fontSize: 'var(--font-sm)',
+                    border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none'
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--font-sm)', marginBottom: 6, color: 'var(--text-secondary)' }}>To Date</label>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  style={{
+                    padding: '9px 12px', fontSize: 'var(--font-sm)',
+                    border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-card)', color: 'var(--text-primary)', outline: 'none'
+                  }}
+                />
+              </div>
+            </>
+          )}
+
           <div>
             <Select
               label="Payment Method"
@@ -773,7 +861,8 @@ const SalesHistory: React.FC = () => {
                 { value: 'Card', label: '💳 Card' },
                 { value: 'UPI', label: '📱 UPI' },
                 { value: 'Insurance', label: '🏥 Insurance' },
-                { value: 'Bank Transfer', label: '🏦 Bank Transfer' }
+                { value: 'Bank Transfer', label: '🏦 Bank Transfer' },
+                { value: 'IP Ledger', label: '🏥 IP Ledger' }
               ]}
             />
           </div>
@@ -839,6 +928,7 @@ const SalesHistory: React.FC = () => {
                   if (v === 'Cash') emoji = '💵';
                   if (v === 'UPI') emoji = '📱';
                   if (v === 'Insurance') emoji = '🏥';
+                  if (v === 'IP Ledger') emoji = '🏥';
                   return <Badge variant="default">{emoji} {v}</Badge>;
                 }
               },

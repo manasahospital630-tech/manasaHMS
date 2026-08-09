@@ -250,6 +250,7 @@ const getSalesHistory = async () => {
     const salesQuery = `
     SELECT DISTINCT 
       i.invoice_id,
+      i.invoice_number,
       i.total_amount,
       i.discount,
       i.tax,
@@ -266,18 +267,25 @@ const getSalesHistory = async () => {
     FROM invoices i
     LEFT JOIN patients p ON i.patient_id COLLATE utf8mb4_unicode_ci = p.patient_id COLLATE utf8mb4_unicode_ci
     LEFT JOIN users u ON i.created_by COLLATE utf8mb4_unicode_ci = u.user_id COLLATE utf8mb4_unicode_ci
-    JOIN invoice_items ii ON i.invoice_id COLLATE utf8mb4_unicode_ci = ii.invoice_id COLLATE utf8mb4_unicode_ci
-    WHERE ii.category = 'Medication' OR i.notes LIKE '%pharmacy sale%'
+    LEFT JOIN invoice_items ii ON i.invoice_id COLLATE utf8mb4_unicode_ci = ii.invoice_id COLLATE utf8mb4_unicode_ci
+    WHERE ii.category = 'Medication' OR i.notes LIKE '%pharmacy%' OR i.notes LIKE '%Pharmacy%' OR i.invoice_number LIKE 'PH-%' OR i.payment_method = 'IP Ledger'
     ORDER BY i.created_at DESC
   `;
     const salesRes = await (0, database_1.query)(salesQuery);
     const sales = salesRes.rows;
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    // Start of week (Sunday)
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
-    // Start of month
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+    const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+    const dayOfWeek = now.getDay();
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek, 0, 0, 0, 0);
+    const startOfLastWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() - 7, 0, 0, 0, 0);
+    const endOfLastWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() - 1, 23, 59, 59, 999);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    const startOfYear = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
     const createEmptyStats = () => ({
         count: 0,
         amount: 0,
@@ -287,12 +295,17 @@ const getSalesHistory = async () => {
             Cash: { count: 0, amount: 0 },
             Insurance: { count: 0, amount: 0 },
             'Bank Transfer': { count: 0, amount: 0 },
+            'IP Ledger': { count: 0, amount: 0 },
         }
     });
     const stats = {
         day: createEmptyStats(),
+        yesterday: createEmptyStats(),
         week: createEmptyStats(),
-        month: createEmptyStats()
+        lastWeek: createEmptyStats(),
+        month: createEmptyStats(),
+        lastMonth: createEmptyStats(),
+        year: createEmptyStats()
     };
     for (const sale of sales) {
         const saleDate = new Date(sale.created_at);
@@ -301,33 +314,25 @@ const getSalesHistory = async () => {
         const updateStats = (periodStats) => {
             periodStats.count++;
             periodStats.amount += amt;
-            if (method === 'UPI') {
-                periodStats.byMethod.UPI.count++;
-                periodStats.byMethod.UPI.amount += amt;
-            }
-            else if (method === 'Card') {
-                periodStats.byMethod.Card.count++;
-                periodStats.byMethod.Card.amount += amt;
-            }
-            else if (method === 'Cash') {
-                periodStats.byMethod.Cash.count++;
-                periodStats.byMethod.Cash.amount += amt;
-            }
-            else if (method === 'Insurance') {
-                periodStats.byMethod.Insurance.count++;
-                periodStats.byMethod.Insurance.amount += amt;
-            }
-            else if (method === 'Bank Transfer') {
-                periodStats.byMethod['Bank Transfer'].count++;
-                periodStats.byMethod['Bank Transfer'].amount += amt;
+            if (periodStats.byMethod[method]) {
+                periodStats.byMethod[method].count++;
+                periodStats.byMethod[method].amount += amt;
             }
         };
-        if (saleDate >= startOfDay)
+        if (saleDate >= startOfDay && saleDate <= endOfDay)
             updateStats(stats.day);
+        if (saleDate >= startOfYesterday && saleDate <= endOfYesterday)
+            updateStats(stats.yesterday);
         if (saleDate >= startOfWeek)
             updateStats(stats.week);
+        if (saleDate >= startOfLastWeek && saleDate <= endOfLastWeek)
+            updateStats(stats.lastWeek);
         if (saleDate >= startOfMonth)
             updateStats(stats.month);
+        if (saleDate >= startOfLastMonth && saleDate <= endOfLastMonth)
+            updateStats(stats.lastMonth);
+        if (saleDate >= startOfYear)
+            updateStats(stats.year);
     }
     return { sales, stats };
 };
