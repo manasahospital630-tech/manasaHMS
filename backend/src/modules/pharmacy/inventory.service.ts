@@ -1,6 +1,7 @@
 import { query } from '../../config/database';
 import { CreateInventoryItemInput, UpdateInventoryItemInput, CreateSaleInput } from './pharmacy.schema';
 import { AppError } from '../../middleware/errorHandler';
+import { v4 as uuidv4 } from 'uuid';
 
 export const getInventory = async (options: { search?: string; lowStock?: boolean; limit?: number; offset?: number }) => {
   let whereClause = 'WHERE 1=1';
@@ -35,15 +36,16 @@ export const getInventoryItemById = async (id: string) => {
 };
 
 export const createInventoryItem = async (input: CreateInventoryItemInput) => {
-  const result = await query(
-    `INSERT INTO inventory_items (item_name, sku, category, manufacturer, stock_quantity, reorder_level, unit_price, expiry_date, generic_name, batch_no, rack_no, purchase_price, is_sheet, tablets_per_sheet, hsn_code)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+  const itemId = uuidv4();
+  await query(
+    `INSERT INTO inventory_items (item_id, item_name, sku, category, manufacturer, stock_quantity, reorder_level, unit_price, expiry_date, generic_name, batch_no, rack_no, purchase_price, is_sheet, tablets_per_sheet, hsn_code)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
     [
-      input.itemName, input.sku, input.category, input.manufacturer || null, input.stockQuantity, input.reorderLevel, input.unitPrice, input.expiryDate,
+      itemId, input.itemName, input.sku, input.category, input.manufacturer || null, input.stockQuantity, input.reorderLevel, input.unitPrice, input.expiryDate,
       input.genericName, input.batchNo, input.rackNo, input.purchasePrice, input.isSheet || false, input.tabletsPerSheet || 1, input.hsnCode || '30049099'
     ]
   );
-  return result.rows[0];
+  return getInventoryItemById(itemId);
 };
 
 export const bulkCreateInventoryItems = async (items: any[]) => {
@@ -84,18 +86,20 @@ export const bulkCreateInventoryItems = async (items: any[]) => {
     const isSheet = String(raw.isSheet ?? raw.is_sheet ?? false).toLowerCase() === 'true' || raw.isSheet === true;
     const tabletsPerSheet = Math.max(1, Number(raw.tabletsPerSheet ?? raw.tablets_per_sheet ?? 1));
     const hsnCode = String(raw.hsnCode || raw.hsn_code || '30049099').trim();
+    const itemId = uuidv4();
 
-    const result = await query(
-      `INSERT INTO inventory_items (item_name, sku, category, manufacturer, stock_quantity, reorder_level, unit_price, expiry_date, generic_name, batch_no, rack_no, purchase_price, is_sheet, tablets_per_sheet, hsn_code)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+    await query(
+      `INSERT INTO inventory_items (item_id, item_name, sku, category, manufacturer, stock_quantity, reorder_level, unit_price, expiry_date, generic_name, batch_no, rack_no, purchase_price, is_sheet, tablets_per_sheet, hsn_code)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
-        itemName, sku, category, manufacturer, stockQuantity, reorderLevel, unitPrice, expiryDate,
+        itemId, itemName, sku, category, manufacturer, stockQuantity, reorderLevel, unitPrice, expiryDate,
         genericName, batchNo, rackNo, purchasePrice, isSheet, tabletsPerSheet, hsnCode
       ]
     );
 
-    if (result.rows.length > 0) {
-      insertedItems.push(result.rows[0]);
+    const newItem = await getInventoryItemById(itemId);
+    if (newItem) {
+      insertedItems.push(newItem);
     }
   }
 
@@ -240,22 +244,39 @@ export const createSale = async (pharmacistId: string, input: CreateSaleInput) =
         finalPaymentMethod = 'IP Ledger';
     }
 
-    const invoiceRes = await query(
-      `INSERT INTO invoices (patient_id, total_amount, discount, tax, patient_responsibility, amount_paid, status, payment_method, notes, created_by, ip_admission_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
-      [patientId, total, totalDiscount, tax, total, finalAmountPaid, finalStatus, finalPaymentMethod, 'Direct pharmacy sale recorded by pharmacist', pharmacistId, ipAdmissionId]
+    const invoiceId = uuidv4();
+    const invoiceNum = `PH-${Date.now().toString(36).toUpperCase()}`;
+
+    await query(
+      `INSERT INTO invoices (invoice_id, invoice_number, patient_id, total_amount, discount, tax, patient_responsibility, amount_paid, status, payment_method, notes, created_by, ip_admission_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [invoiceId, invoiceNum, patientId, total, totalDiscount, tax, total, finalAmountPaid, finalStatus, finalPaymentMethod, 'Direct pharmacy sale recorded by pharmacist', pharmacistId, ipAdmissionId]
     );
-    const invoice = invoiceRes.rows[0];
+
+    // Mirror to billing_invoices to satisfy invoice_items FK constraint if defined
+    try {
+      await query(
+        `INSERT INTO billing_invoices (invoice_id, invoice_number, patient_id, total_amount, paid_amount, balance_amount, status, payment_mode, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [invoiceId, invoiceNum, patientId, total, finalAmountPaid, total - finalAmountPaid, finalStatus, finalPaymentMethod, 'Direct pharmacy sale']
+      );
+    } catch (bErr) {
+      console.warn('billing_invoices mirror skipped:', bErr);
+    }
 
     for (const details of itemDetails) {
+      const invoiceItemId = uuidv4();
+      const lineTotal = parseFloat((details.charge_price * details.quantity).toFixed(2));
       await query(
-        `INSERT INTO invoice_items (invoice_id, description, category, quantity, unit_price, hsn_code, batch_no, expiry_date, composition, discount, unit)
-         VALUES ($1, $2, 'Medication', $3, $4, $5, $6, $7, $8, $9, $10)`,
+        `INSERT INTO invoice_items (item_id, invoice_id, description, category, quantity, unit_price, total_price, hsn_code, batch_no, expiry_date, composition, discount, unit)
+         VALUES ($1, $2, $3, 'Medication', $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
-          invoice.invoice_id, 
+          invoiceItemId,
+          invoiceId, 
           `${details.item_name} (${details.unit_label})`, 
           details.quantity, 
           details.charge_price,
+          lineTotal,
           details.hsn_code,
           details.batch_no,
           details.expiry_date,
@@ -265,6 +286,9 @@ export const createSale = async (pharmacistId: string, input: CreateSaleInput) =
         ]
       );
     }
+
+    const invoiceRes = await query('SELECT * FROM invoices WHERE invoice_id = $1', [invoiceId]);
+    const invoice = invoiceRes.rows[0] || { invoice_id: invoiceId, invoice_number: invoiceNum, total_amount: total, status: finalStatus };
 
     await query('COMMIT');
     return invoice;
