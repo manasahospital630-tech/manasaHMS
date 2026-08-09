@@ -36,10 +36,10 @@ export const updateInventoryItemSchema = z.object({
 });
 
 export const createPrescriptionSchema = z.object({
-  encounterId: z.string().uuid(),
-  patientId: z.string().uuid(),
+  encounterId: z.string().min(1, { message: 'Encounter ID is required' }),
+  patientId: z.string().min(1, { message: 'Patient ID is required' }),
   items: z.array(z.object({
-    itemId: z.string().uuid(),
+    itemId: z.string().min(1, { message: 'Item ID is required' }),
     dosageInstruction: z.string().min(1),
     quantityPrescribed: z.number().int().min(1),
   })).min(1, { message: 'At least one prescription item is required' }),
@@ -50,12 +50,15 @@ export type UpdateInventoryItemInput = z.infer<typeof updateInventoryItemSchema>
 export type CreatePrescriptionInput = z.infer<typeof createPrescriptionSchema>;
 
 export const createSaleSchema = z.object({
-  patientId: z.string().uuid(),
+  patientId: z.string().min(1, { message: 'Patient ID is required' }),
   paymentMethod: z.enum(['Cash', 'Card', 'Insurance', 'Bank Transfer', 'UPI', 'IP Ledger']),
   items: z.array(z.object({
-    itemId: z.string().uuid(),
+    itemId: z.string().min(1, { message: 'Item ID is required' }),
     quantity: z.number().int().min(1),
-    sellLoose: z.boolean().optional().default(false),
+    sellLoose: z.preprocess(
+      (val) => typeof val === 'number' ? Boolean(val) : val,
+      z.boolean().optional().default(false)
+    ),
     discount: z.number().min(0).optional().default(0),
   })).min(1, { message: 'At least one item is required' }),
 });

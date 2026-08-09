@@ -345,7 +345,7 @@ const MedicineSales: React.FC = () => {
         items: selectedItems.map(x => ({
           itemId: x.itemId,
           quantity: x.quantity,
-          sellLoose: x.sellLoose,
+          sellLoose: Boolean(x.sellLoose),
           discount: x.discount || 0,
         })),
       };

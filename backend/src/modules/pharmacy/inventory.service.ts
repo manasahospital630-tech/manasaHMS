@@ -223,10 +223,10 @@ export const createSale = async (pharmacistId: string, input: CreateSaleInput) =
        const pRes = await query('SELECT is_inpatient FROM patients WHERE patient_id = $1', [patientId]);
        if (pRes.rows.length > 0 && pRes.rows[0].is_inpatient) {
            isIp = true;
-           const ipRes = await query(`SELECT ip_admission_id FROM ip_admissions WHERE patient_id = $1 AND status != 'Discharged' ORDER BY admitted_at DESC LIMIT 1`, [patientId]);
-           if (ipRes.rows.length > 0) {
-               ipAdmissionId = ipRes.rows[0].ip_admission_id;
-           }
+            const ipRes = await query(`SELECT admission_id as ip_admission_id FROM ip_admissions WHERE patient_id = $1 AND status != 'Discharged' ORDER BY created_at DESC LIMIT 1`, [patientId]);
+            if (ipRes.rows.length > 0) {
+                ipAdmissionId = ipRes.rows[0].ip_admission_id;
+            }
        }
     }
 
