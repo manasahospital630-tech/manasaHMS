@@ -287,14 +287,14 @@ export const getSalesHistory = async () => {
       p.first_name as patient_first_name,
       p.last_name as patient_last_name,
       p.phone as patient_phone,
-      p.medical_record_number as patient_mrn,
+      p.mrn as patient_mrn,
       u.first_name as pharmacist_first_name,
       u.last_name as pharmacist_last_name,
       u.email as pharmacist_email
     FROM invoices i
-    LEFT JOIN patients p ON i.patient_id = p.patient_id
-    LEFT JOIN users u ON i.created_by = u.user_id
-    JOIN invoice_items ii ON i.invoice_id = ii.invoice_id
+    LEFT JOIN patients p ON i.patient_id COLLATE utf8mb4_unicode_ci = p.patient_id COLLATE utf8mb4_unicode_ci
+    LEFT JOIN users u ON i.created_by COLLATE utf8mb4_unicode_ci = u.user_id COLLATE utf8mb4_unicode_ci
+    JOIN invoice_items ii ON i.invoice_id COLLATE utf8mb4_unicode_ci = ii.invoice_id COLLATE utf8mb4_unicode_ci
     WHERE ii.category = 'Medication' OR i.notes LIKE '%pharmacy sale%'
     ORDER BY i.created_at DESC
   `;
