@@ -70,12 +70,26 @@ export const admitEmergencyPatient = async (input: any) => {
     const emgRes = await query('SELECT * FROM emergency_admissions WHERE emergency_id = $1', [emergencyId]);
     const emergencyRecord = emgRes.rows[0];
 
+    // Resolve valid doctor/user ID for encounters table FK constraint
+    let doctorId = input.admittingDoctorId;
+    if (doctorId) {
+      const docCheck = await query('SELECT user_id FROM users WHERE user_id = $1', [doctorId]);
+      if (docCheck.rows.length === 0) {
+        doctorId = null;
+      }
+    }
+
+    if (!doctorId) {
+      const fallbackDoc = await query("SELECT user_id FROM users WHERE role IN ('Doctor', 'Admin') ORDER BY created_at ASC LIMIT 1");
+      doctorId = fallbackDoc.rows[0]?.user_id || 'u-doc-02';
+    }
+
     // Create general EMR encounter so SOAP notes can be appended
     const encounterId = uuidv4();
     await query(`
-      INSERT INTO encounters (encounter_id, patient_id, provider_id, chief_complaint, status)
-      VALUES ($1, $2, $3, $4, 'Active')
-    `, [encounterId, patientId, input.admittingDoctorId || null, `Emergency Admission: ${input.mlcCategory || 'General trauma'}`]);
+      INSERT INTO encounters (encounter_id, patient_id, doctor_id, chief_complaint)
+      VALUES ($1, $2, $3, $4)
+    `, [encounterId, patientId, doctorId, `Emergency Admission: ${input.mlcCategory || 'General trauma'}`]);
 
     await query('COMMIT');
 

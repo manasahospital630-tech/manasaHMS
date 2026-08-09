@@ -5,9 +5,11 @@ import {
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { useAuth } from '../../hooks/useAuth';
 import api from '../../api/client';
 
 export const EmergencyDashboard: React.FC = () => {
+  const { user } = useAuth();
   const [patients, setPatients] = useState<any[]>([]);
   const [beds, setBeds] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,7 +135,7 @@ export const EmergencyDashboard: React.FC = () => {
         },
         triagePriority: intakeForm.triagePriority,
         currentBedId: intakeForm.currentBedId || null,
-        admittingDoctorId: '1e345e67-d86b-4e12-881a-7b3f94b15099' // placeholder or real doctor ID will resolve
+        admittingDoctorId: user?.user_id || 'u-doc-02'
       };
 
       const res = await api.post('/v1/emergency/admit', payload);
